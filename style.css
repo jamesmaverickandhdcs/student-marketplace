@@ -39,3 +39,17 @@ button {
     border: none;
     cursor: pointer;
 }
+
+.listing {
+    border: 1px solid #ccc;
+    background: #fff;
+    padding: 15px;
+    margin: 15px auto;
+    width: 300px;
+    text-align: center;
+}
+
+.listing img {
+    display: block;
+    margin: 0 auto 10px;
+}
