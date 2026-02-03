@@ -1,0 +1,58 @@
+<?php
+session_start();
+include 'csrf.php'; // ✅ include CSRF functions
+?>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Add Listing</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <h1>Student Marketplace</h1>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="listings.php">Listings</a></li>
+                <li><a href="add_listing.html">Add Listing</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <h2>Post a New Listing</h2>
+        <!-- enctype required for file uploads -->
+        <form action="add_listing.php" method="POST" enctype="multipart/form-data" class="add-listing-form">
+            <label for="title">Title:</label>
+            <input type="text" name="title" id="title" required><br><br>
+
+            <label for="description">Description:</label>
+            <textarea name="description" id="description" required></textarea><br><br>
+
+            <label for="price">Price:</label>
+            <input type="number" name="price" id="price" step="0.01" required><br><br>
+
+            <label for="image">Upload Image:</label>
+            <input type="file" name="image" id="image" accept="image/*"><br><br>
+
+            <label for="category">Category:</label>
+            <select name="category" id="category" required>
+                <option value="Books">Books</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Services">Services</option>
+                <option value="Other">Other</option>
+            </select><br><br>
+
+            <!-- ✅ CSRF Token -->
+            <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+
+            <button type="submit">Submit Listing</button>
+        </form>
+    </main>
+</body>
+
+</html>

@@ -1,0 +1,77 @@
+/* === Print Styles === */
+@media print {
+
+  /* Reset background and text colors */
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-family: Georgia, serif;
+  }
+
+  /* Hide navigation, buttons, and dynamic elements */
+  header,
+  nav,
+  footer,
+  #toggleDarkMode,
+  #backToTop,
+  #loading-spinner,
+  button {
+    display: none !important;
+  }
+
+  /* Expand listings to full width */
+  .listings-container {
+    display: block;
+    width: 100%;
+  }
+
+  .card {
+    border: 1px solid #000;
+    box-shadow: none;
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 15px;
+    page-break-inside: avoid;
+    background: #fff;
+  }
+
+  .card img {
+    max-width: 100%;
+    height: auto;
+    margin-bottom: 10px;
+  }
+
+  .card h3 {
+    font-size: 16pt;
+    color: #000;
+    margin: 10px 0;
+  }
+
+  .card p {
+    font-size: 12pt;
+    color: #000;
+    margin: 5px 0;
+  }
+
+  .card .price {
+    font-weight: bold;
+    color: #000;
+  }
+
+  .card .posted {
+    font-size: 10pt;
+    color: #444;
+  }
+
+  /* Avoid breaking listings mid-card */
+  .card {
+    page-break-after: auto;
+  }
+
+  /* Optional: Add page title */
+  h2 {
+    font-size: 18pt;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+}

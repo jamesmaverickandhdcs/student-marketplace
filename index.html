@@ -13,8 +13,11 @@
         <nav>
             <ul>
                 <li><a href="index.html">Home</a></li>
-                <li><a href="listings.html">Listings</a></li>
-                <li><a href="#">Login</a></li>
+                <li><a href="listings.php">Listings</a></li>
+                <li><a href="add_listing.html">Add Listing</a></li>
+                <li><a href="register.html">Register</a></li>
+                <li><a href="login.html">Login</a></li>
+                <li><a href="logout.php">Logout</a></li>
             </ul>
         </nav>
     </header>
@@ -23,9 +26,19 @@
         <h2>Welcome to the Student Marketplace!</h2>
         <p>Buy, sell, and trade items with fellow students.</p>
         <button onclick="welcomeMessage()">Click Me</button>
+        <div id="welcome-output"></div>
     </main>
 
-    <script src="script.js"></script>
+    <footer>
+        <p>&copy; 2026 Student Marketplace</p>
+    </footer>
+
+    <script>
+        function welcomeMessage() {
+            document.getElementById('welcome-output').innerHTML =
+                "<p>Thanks for visiting! Explore listings now.</p>";
+        }
+    </script>
 </body>
 
 </html>
