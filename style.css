@@ -1,55 +1,449 @@
+/* ===========================
+   Global Styles
+=========================== */
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    margin: 0;
-    padding: 0;
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background-color: #f5f5f5;
+  color: #333;
 }
 
+/* ===========================
+   Header & Navigation
+=========================== */
 header {
-    background: #333;
-    color: #fff;
-    padding: 15px;
-    text-align: center;
+  background-color: #222;
+  color: #fff;
+  padding: 1rem;
+  text-align: center;
 }
 
 nav ul {
-    list-style: none;
-    padding: 0;
+  list-style: none;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  align-items: center;
 }
 
-nav ul li {
-    display: inline;
-    margin: 0 15px;
+nav a {
+  color: #fff;
+  text-decoration: none;
 }
 
-nav ul li a {
-    color: #fff;
-    text-decoration: none;
+nav a:hover {
+  text-decoration: underline;
 }
 
+/* Logout Button */
+.inline-form {
+  display: inline;
+}
+
+.btn-logout {
+  background-color: #dc3545;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-logout:hover {
+  background-color: #c82333;
+}
+
+/* ===========================
+   Main Content
+=========================== */
 main {
-    padding: 20px;
-    text-align: center;
+  padding: 2rem;
+  max-width: 1000px;
+  margin: auto;
 }
 
+/* ===========================
+   Tables
+=========================== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  font-size: 0.95em;
+  background-color: #fff;
+}
+
+table th,
+table td {
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  text-align: left;
+}
+
+table th {
+  background-color: #333;
+  color: #fff;
+}
+
+table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+table tr:hover {
+  background-color: #f1f1f1;
+}
+
+/* ===========================
+   Buttons
+=========================== */
 button {
-    padding: 10px 20px;
-    background: #333;
-    color: #fff;
-    border: none;
-    cursor: pointer;
+  padding: 6px 12px;
+  margin: 2px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
 }
 
-.listing {
-    border: 1px solid #ccc;
-    background: #fff;
-    padding: 15px;
-    margin: 15px auto;
-    width: 300px;
-    text-align: center;
+button:hover {
+  opacity: 0.9;
 }
 
-.listing img {
-    display: block;
-    margin: 0 auto 10px;
+/* Lifecycle Action Buttons */
+button[name="action"][value="postpone"] {
+  background-color: #f39c12;
+  color: #fff;
+}
+
+button[name="action"][value="postpone"]:hover {
+  background-color: #d68910;
+}
+
+button[name="action"][value="traded"] {
+  background-color: #6c757d;
+  color: #fff;
+}
+
+button[name="action"][value="traded"]:hover {
+  background-color: #5a6268;
+}
+
+button[name="action"][value="reactivate"] {
+  background-color: #28a745;
+  color: #fff;
+}
+
+button[name="action"][value="reactivate"]:hover {
+  background-color: #218838;
+}
+
+/* ===========================
+   Status Labels
+=========================== */
+.status {
+  font-weight: bold;
+  margin-top: 5px;
+}
+
+.status.active {
+  color: #28a745;
+}
+
+.status.postponed {
+  color: #f39c12;
+}
+
+.status.traded {
+  color: #6c757d;
+}
+
+/* ===========================
+   Floating Notifications
+=========================== */
+.notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: bold;
+  text-align: center;
+  z-index: 2000;
+  opacity: 0;
+  animation: fadeInOut 5s forwards;
+}
+
+.notification.success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.notification.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+
+  10% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  90% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+}
+
+/* ===========================
+   Responsive Design
+=========================== */
+@media (max-width: 600px) {
+  nav ul {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  table {
+    font-size: 0.85em;
+  }
+
+  button {
+    padding: 5px 10px;
+    font-size: 0.8em;
+  }
+}
+
+/* ===========================
+   Dark Mode
+=========================== */
+body.dark-mode {
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+body.dark-mode table {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+}
+
+body.dark-mode table th {
+  background-color: #444;
+}
+
+body.dark-mode table td {
+  color: #ddd;
+}
+
+/* Dark Mode Status Colors */
+body.dark-mode .status.active {
+  color: #4caf50;
+}
+
+body.dark-mode .status.postponed {
+  color: #ffb74d;
+}
+
+body.dark-mode .status.traded {
+  color: #b0bec5;
+}
+
+/* ===========================
+   Listing Cards
+=========================== */
+.card {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 15px;
+  margin: 15px 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 1.2em;
+  color: #222;
+}
+
+.card p {
+  margin: 4px 0;
+  font-size: 0.95em;
+}
+
+.card .price {
+  font-weight: bold;
+  color: #28a745;
+}
+
+.card .category {
+  font-style: italic;
+  color: #555;
+}
+
+.card .posted {
+  font-size: 0.85em;
+  color: #777;
+}
+
+.card .status {
+  font-size: 0.9em;
+  margin-top: 6px;
+}
+
+/* Card Actions */
+.card-actions {
+  margin-top: 10px;
+}
+
+.card-actions a,
+.card-actions button {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  text-decoration: none;
+}
+
+.card-actions .btn-edit {
+  background-color: #007bff;
+  color: #fff;
+}
+
+.card-actions .btn-edit:hover {
+  background-color: #0056b3;
+}
+
+/* Dark Mode Cards */
+body.dark-mode .card {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  box-shadow: 0 2px 6px rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .card h3 {
+  color: #e0e0e0;
+}
+
+body.dark-mode .card p {
+  color: #ccc;
+}
+
+body.dark-mode .card .price {
+  color: #4caf50;
+}
+
+body.dark-mode .card .category {
+  color: #bbb;
+}
+
+body.dark-mode .card .posted {
+  color: #999;
+}
+
+/* ===========================
+   Status Badges
+=========================== */
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-top: 6px;
+}
+
+.badge.active {
+  background-color: #28a745;
+  color: #fff;
+}
+
+.badge.postponed {
+  background-color: #f39c12;
+  color: #fff;
+}
+
+.badge.traded {
+  background-color: #6c757d;
+  color: #fff;
+}
+
+/* Dark Mode Badges */
+body.dark-mode .badge.active {
+  background-color: #4caf50;
+}
+
+body.dark-mode .badge.postponed {
+  background-color: #ffb74d;
+}
+
+body.dark-mode .badge.traded {
+  background-color: #b0bec5;
+}
+
+/* ===========================
+   Tooltips
+=========================== */
+.tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip .tooltiptext {
+  visibility: hidden;
+  max-width: 200px;
+  /* flexible width */
+  white-space: normal;
+  /* allow wrapping */
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 6px 8px;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  /* Position above the button */
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* Show tooltip on hover or focus */
+.tooltip:hover .tooltiptext,
+.tooltip:focus .tooltiptext {
+  visibility: visible;
+  opacity: 1;
 }
