@@ -196,6 +196,24 @@ if (isset($_GET['export'])) {
 }
 
 /* ---------------------------
+   AJAX response for infinite scroll
+---------------------------- */
+if (isset($_GET['ajax']) && $_GET['ajax'] == 1) {
+    while ($row = $result->fetch_assoc()) {
+        echo '<div class="card">';
+        echo '<h3>'.htmlspecialchars($row['title']).'</h3>';
+        echo '<p>'.htmlspecialchars($row['description']).'</p>';
+        echo '<p class="price">Price: $'.number_format($row['price'], 2).'</p>';
+        echo '<p class="category">Category: '.htmlspecialchars($row['category']).'</p>';
+        echo '<p class="status">Status: <span class="badge '.$row['status'].'">'.ucfirst($row['status']).'</span></p>';
+        echo '<p class="user">Posted by: '.htmlspecialchars($row['username']).'</p>';
+        echo '<p class="posted">Posted on '.date("F j, Y", strtotime($row['created_at'])).'</p>';
+        echo '</div>';
+    }
+    exit;
+}
+
+/* ---------------------------
    Build filter query string for pagination
 ---------------------------- */
 $filterQuery = '';
@@ -268,74 +286,20 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
     <div class="notification error" role="alert">❌ <?= htmlspecialchars($_GET['error']); ?></div>
   <?php endif; ?>
 
-  <!-- Bulk Action Form -->
-  <form method="POST" action="admin_listings.php" onsubmit="return confirm('Apply bulk action?');">
-    <select name="bulk_action" required>
-      <option value="">Bulk Action</option>
-      <option value="approve">Approve Selected</option>
-      <option value="remove">Remove Selected</option>
-    </select>
-    <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
-    <button type="submit">Apply</button>
-
-    <!-- Select All Checkbox -->
-    <label>
-      <input type="checkbox" id="selectAll" aria-label="Select all listings"> Select All Listings
-    </label>
-
-    <!-- Listings -->
-    <div class="listings-container">
-      <?php if ($result->num_rows > 0): ?>
-        <?php while ($row = $result->fetch_assoc()): ?>
-          <div class="card">
-            <input type="checkbox" name="selected_listings[]" value="<?= $row['id']; ?>">
-            <h3><?= htmlspecialchars($row['title']); ?></h3>
-            <p><?= htmlspecialchars($row['description']); ?></p>
-            <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
-            <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
-            <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
-            <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
-            <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
-
-            <!-- Moderation Actions -->
-            <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
-              <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
-              <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
-              <?php if ($row['status'] !== 'active'): ?>
-                <button type="submit" name="action" value="approve" aria-label="Approve listing">Approve</button>
-              <?php endif; ?>
-              <?php if ($row['status'] !== 'removed'): ?>
-                <button type="submit" name="action" value="remove" aria-label="Remove listing">Remove</button>
-              <?php endif; ?>
-            </form>
-          </div>
-        <?php endwhile; ?>
-
-        <!-- Pagination -->
-        <div class="pagination">
-          <?php if ($page > 1): ?>
-            <a href="admin_listings.php?page=1<?= $filterQuery ?>" class="page-link" aria-label="First page">« First</a>
-            <a href="admin_listings.php?page=<?= $page - 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Previous page">‹ Previous</a>
-          <?php else: ?>
-            <span class="page-link disabled" aria-disabled="true">« First</span>
-            <span class="page-link disabled" aria-disabled="true">‹ Previous</span>
-          <?php endif; ?>
-
-          <span class="current-page">Page <?= $page ?> of <?= $totalPages ?></span>
-
-          <?php if ($page < $totalPages): ?>
-            <a href="admin_listings.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Next page">Next ›</a>
-            <a href="admin_listings.php?page=<?= $totalPages ?><?= $filterQuery ?>" class="page-link" aria-label="Last page">Last »</a>
-          <?php else: ?>
-            <span class="page-link disabled" aria-disabled="true">Next ›</span>
-            <span class="page-link disabled" aria-disabled="true">Last »</span>
-          <?php endif; ?>
-        </div>
-      <?php else: ?>
-        <p>No listings found.</p>
-      <?php endif; ?>
-    </div>
-  </form>
+  <!-- Listings Container -->
+  <div class="listings-container">
+    <?php while ($row = $result->fetch_assoc()): ?>
+      <div class="card">
+        <h3><?= htmlspecialchars($row['title']); ?></h3>
+        <p><?= htmlspecialchars($row['description']); ?></p>
+        <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+        <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+        <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
+        <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+        <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+      </div>
+    <?php endwhile; ?>
+  </div>
 
   <!-- Collapsible Audit Logs -->
   <button id="toggleLogs" aria-expanded="false">Show Audit Logs</button>
@@ -366,12 +330,6 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
 <button id="backToTop" class="btn-top">⬆️ Back to Top</button>
 
 <script>
-// Select All functionality
-document.getElementById('selectAll').addEventListener('change', function() {
-  const checkboxes = document.querySelectorAll('input[name="selected_listings[]"]');
-  checkboxes.forEach(cb => cb.checked = this.checked);
-});
-
 // Collapsible Audit Logs
 document.getElementById('toggleLogs').addEventListener('click', function() {
   const logs = document.getElementById('auditLogs');
@@ -379,6 +337,41 @@ document.getElementById('toggleLogs').addEventListener('click', function() {
   logs.style.display = expanded ? 'none' : 'block';
   this.textContent = expanded ? 'Show Audit Logs' : 'Hide Audit Logs';
   this.setAttribute('aria-expanded', !expanded);
+});
+
+// Back to Top
+document.getElementById('backToTop').addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// AJAX Live Filtering
+document.querySelector('.filter-form').addEventListener('change', function(e) {
+  e.preventDefault();
+  const params = new URLSearchParams(new FormData(this));
+  params.append('ajax', '1');
+  fetch('admin_listings.php?' + params.toString())
+    .then(res => res.text())
+    .then(html => {
+      document.querySelector('.listings-container').innerHTML = html;
+    });
+});
+
+// Infinite Scroll
+let page = 1;
+window.addEventListener('scroll', () => {
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+    page++;
+    const params = new URLSearchParams(new FormData(document.querySelector('.filter-form')));
+    params.append('ajax', '1');
+    params.append('page', page);
+    fetch('admin_listings.php?' + params.toString())
+      .then(res => res.text())
+      .then(html => {
+        if (html.trim() !== '') {
+          document.querySelector('.listings-container').insertAdjacentHTML('beforeend', html);
+        }
+      });
+  }
 });
 </script>
 
