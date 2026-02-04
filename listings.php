@@ -1,6 +1,121 @@
 <?php
 session_start();
 include 'db.php';
+
+// Pagination setup
+$limit  = 6;
+$page   = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($page - 1) * $limit;
+
+/* ---------------------------
+   Build dynamic query for count
+---------------------------- */
+$countQuery  = "SELECT COUNT(*) AS total FROM listings WHERE 1=1";
+$countParams = [];
+$countTypes  = "";
+
+// Filters
+if (!empty($_GET['category'])) {
+    $countQuery .= " AND category = ?";
+    $countParams[] = $_GET['category'];
+    $countTypes   .= "s";
+}
+if (!empty($_GET['search'])) {
+    $countQuery .= " AND (title LIKE ? OR description LIKE ?)";
+    $searchTerm   = "%" . $_GET['search'] . "%";
+    $countParams[] = $searchTerm;
+    $countParams[] = $searchTerm;
+    $countTypes   .= "ss";
+}
+if (!empty($_GET['min_price'])) {
+    $countQuery .= " AND price >= ?";
+    $countParams[] = $_GET['min_price'];
+    $countTypes   .= "d";
+}
+if (!empty($_GET['max_price'])) {
+    $countQuery .= " AND price <= ?";
+    $countParams[] = $_GET['max_price'];
+    $countTypes   .= "d";
+}
+
+$countStmt = $conn->prepare($countQuery);
+if (!empty($countParams)) {
+    $countStmt->bind_param($countTypes, ...$countParams);
+}
+$countStmt->execute();
+$totalListings = $countStmt->get_result()->fetch_assoc()['total'];
+$countStmt->close();
+
+$totalPages = ceil($totalListings / $limit);
+
+/* ---------------------------
+   Build dynamic query for listings
+---------------------------- */
+$query  = "SELECT * FROM listings WHERE 1=1";
+$params = [];
+$types  = "";
+
+// Apply filters
+if (!empty($_GET['category'])) {
+    $query .= " AND category = ?";
+    $params[] = $_GET['category'];
+    $types   .= "s";
+}
+if (!empty($_GET['search'])) {
+    $query .= " AND (title LIKE ? OR description LIKE ?)";
+    $searchTerm = "%" . $_GET['search'] . "%";
+    $params[]   = $searchTerm;
+    $params[]   = $searchTerm;
+    $types     .= "ss";
+}
+if (!empty($_GET['min_price'])) {
+    $query .= " AND price >= ?";
+    $params[] = $_GET['min_price'];
+    $types   .= "d";
+}
+if (!empty($_GET['max_price'])) {
+    $query .= " AND price <= ?";
+    $params[] = $_GET['max_price'];
+    $types   .= "d";
+}
+
+// Sorting
+if (isset($_GET['sort'])) {
+    if ($_GET['sort'] === "low_price") {
+        $query .= " ORDER BY price ASC";
+    } elseif ($_GET['sort'] === "high_price") {
+        $query .= " ORDER BY price DESC";
+    } elseif ($_GET['sort'] === "oldest") {
+        $query .= " ORDER BY created_at ASC";
+    } else {
+        $query .= " ORDER BY created_at DESC";
+    }
+} else {
+    $query .= " ORDER BY created_at DESC";
+}
+
+// Pagination
+$query .= " LIMIT ? OFFSET ?";
+$params[] = $limit;
+$params[] = $offset;
+$types   .= "ii";
+
+$stmt = $conn->prepare($query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$result = $stmt->get_result();
+
+/* ---------------------------
+   Build filter query string for pagination
+---------------------------- */
+$filterQuery = '';
+foreach (['category','search','min_price','max_price','sort'] as $param) {
+    if (!empty($_GET[$param])) {
+        $filterQuery .= '&' . $param . '=' . urlencode($_GET[$param]);
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -18,7 +133,7 @@ include 'db.php';
 
   <!-- Search + Filter Form -->
   <form id="searchForm" method="GET" action="listings.php" class="filter-form">
-    <input type="text" name="search" placeholder="Search listings..." 
+    <input type="text" name="search" placeholder="Search listings..."
            value="<?= isset($_GET['search']) ? htmlspecialchars($_GET['search']) : '' ?>">
     <input type="number" name="min_price" placeholder="Min $" step="0.01"
            value="<?= isset($_GET['min_price']) ? htmlspecialchars($_GET['min_price']) : '' ?>">
@@ -44,17 +159,52 @@ include 'db.php';
     <button type="button" onclick="window.print()">🖨️ Print Listings</button>
   </form>
 
-  <!-- ✅ Floating Notification System -->
+  <!-- Floating Notification System -->
   <?php if (isset($_GET['success']) && $_GET['success'] == 1): ?>
     <div class="notification success">✅ Your listing was posted successfully!</div>
   <?php elseif (isset($_GET['error'])): ?>
     <div class="notification error">❌ <?= htmlspecialchars($_GET['error']); ?></div>
   <?php endif; ?>
 
-  <!-- Listings container -->
-  <div id="listings-container" class="listings-container"></div>
-  <div id="loading-spinner" style="display:none; text-align:center;">
-    <div class="loader"></div>
+  <!-- Listings Container -->
+  <div class="listings-container">
+    <?php if ($result->num_rows > 0): ?>
+      <?php while ($row = $result->fetch_assoc()): ?>
+        <div class="card">
+          <img src="<?= !empty($row['image']) ? htmlspecialchars($row['image']) : 'images/placeholder.png' ?>"
+               alt="<?= !empty($row['image']) ? htmlspecialchars($row['title']).' image' : 'No image available' ?>">
+          <h3><?= htmlspecialchars($row['title']); ?></h3>
+          <p><?= htmlspecialchars($row['description']); ?></p>
+          <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+          <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+          <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+        </div>
+      <?php endwhile; ?>
+
+      <!-- Pagination -->
+      <div class="pagination">
+        <?php if ($page > 1): ?>
+          <a href="listings.php?page=1<?= $filterQuery ?>" class="page-link" aria-label="First page">« First</a>
+          <a href="listings.php?page=<?= $page - 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Previous page">‹ Previous</a>
+        <?php else: ?>
+          <span class="page-link disabled" aria-disabled="true">« First</span>
+          <span class="page-link disabled" aria-disabled="true">‹ Previous</span>
+        <?php endif; ?>
+
+        <span class="current-page">Page <?= $page ?> of <?= $totalPages ?></span>
+
+        <?php if ($page < $totalPages): ?>
+          <a href="listings.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Next page">Next ›</a>
+          <a href="listings.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Next page">Next ›</a>
+          <a href="listings.php?page=<?= $totalPages ?><?= $filterQuery ?>" class="page-link" aria-label="Last page">Last »</a>
+        <?php else: ?>
+          <span class="page-link disabled" aria-disabled="true">Next ›</span>
+          <span class="page-link disabled" aria-disabled="true">Last »</span>
+        <?php endif; ?>
+      </div>
+    <?php else: ?>
+      <p>No listings found. Try adjusting your filters or search terms.</p>
+    <?php endif; ?>
   </div>
 </main>
 
@@ -64,3 +214,9 @@ include 'db.php';
 <script src="listings.js"></script>
 </body>
 </html>
+<?php
+if (isset($stmt)) {
+    $stmt->close();
+}
+$conn->close();
+?>
