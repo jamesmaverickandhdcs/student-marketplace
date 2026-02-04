@@ -9,6 +9,18 @@ if (!isset($_SESSION['is_admin']) || $_SESSION['is_admin'] !== true) {
     exit;
 }
 
+// Session hardening: timeout after 30 minutes
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 1800)) {
+    session_unset();
+    session_destroy();
+    header("Location: login.html?error=session_timeout");
+    exit;
+}
+$_SESSION['last_activity'] = time();
+
+// Role check (superadmin or moderator)
+$role = $_SESSION['role'] ?? 'moderator';
+
 /* ---------------------------
    Handle moderation actions
 ---------------------------- */
@@ -18,8 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Bulk actions
-    if (isset($_POST['bulk_action']) && !empty($_POST['selected_listings'])) {
+    // Bulk actions (superadmin only)
+    if ($role === 'superadmin' && isset($_POST['bulk_action']) && !empty($_POST['selected_listings'])) {
         $action = $_POST['bulk_action'];
         foreach ($_POST['selected_listings'] as $listing_id) {
             $listing_id = intval($listing_id);
@@ -31,9 +43,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($stmt)) {
                 $stmt->bind_param("i", $listing_id);
                 $stmt->execute();
-                // Log action
-                $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, timestamp) VALUES (?, ?, ?, NOW())");
-                $logStmt->bind_param("iis", $_SESSION['admin_id'], $listing_id, $action);
+                // Enhanced audit log
+                $ip = $_SERVER['REMOTE_ADDR'];
+                $ua = $_SERVER['HTTP_USER_AGENT'];
+                $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, ip_address, user_agent, timestamp) VALUES (?, ?, ?, ?, ?, NOW())");
+                $logStmt->bind_param("iisss", $_SESSION['admin_id'], $listing_id, $action, $ip, $ua);
                 $logStmt->execute();
                 $logStmt->close();
             }
@@ -42,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Single listing actions
+    // Single listing actions (moderators allowed)
     if (isset($_POST['listing_id'])) {
         $listing_id = intval($_POST['listing_id']);
         $action     = $_POST['action'];
@@ -56,9 +70,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($stmt)) {
             $stmt->bind_param("i", $listing_id);
             $stmt->execute();
-            // Log action
-            $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, timestamp) VALUES (?, ?, ?, NOW())");
-            $logStmt->bind_param("iis", $_SESSION['admin_id'], $listing_id, $action);
+            // Enhanced audit log
+            $ip = $_SERVER['REMOTE_ADDR'];
+            $ua = $_SERVER['HTTP_USER_AGENT'];
+            $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, ip_address, user_agent, timestamp) VALUES (?, ?, ?, ?, ?, NOW())");
+            $logStmt->bind_param("iisss", $_SESSION['admin_id'], $listing_id, $action, $ip, $ua);
             $logStmt->execute();
             $logStmt->close();
         }
@@ -141,9 +157,9 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 /* ---------------------------
-   Export query (multi-format)
+   Export query (superadmin only)
 ---------------------------- */
-if (isset($_GET['export'])) {
+if ($role === 'superadmin' && isset($_GET['export'])) {
     $exportType = $_GET['export'];
     $exportQuery = $baseQuery . " ORDER BY l.created_at DESC";
     $exportStmt = $conn->prepare($exportQuery);
@@ -196,6 +212,33 @@ if (isset($_GET['export'])) {
 }
 
 /* ---------------------------
+   Export Audit Logs (superadmin only)
+---------------------------- */
+if ($role === 'superadmin' && isset($_GET['export_logs'])) {
+    $logResult = $conn->query("SELECT * FROM admin_logs ORDER BY timestamp DESC");
+    if ($_GET['export_logs'] === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=audit_logs.csv');
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['Admin ID','Listing ID','Action','IP','User Agent','Timestamp']);
+        while ($log = $logResult->fetch_assoc()) {
+            fputcsv($output, [$log['admin_id'],$log['listing_id'],$log['action'],$log['ip_address'],$log['user_agent'],$log['timestamp']]);
+        }
+        fclose($output);
+        exit;
+    }
+    if ($_GET['export_logs'] === 'json') {
+        header('Content-Type: application/json; charset=utf-8');
+        $rows = [];
+        while ($log = $logResult->fetch_assoc()) {
+            $rows[] = $log;
+        }
+        echo json_encode($rows, JSON_PRETTY_PRINT);
+        exit;
+    }
+}
+
+/* ---------------------------
    AJAX response for infinite scroll
 ---------------------------- */
 if (isset($_GET['ajax']) && $_GET['ajax'] == 1) {
@@ -236,13 +279,10 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
 <main>
   <h2>Admin: Manage Listings</h2>
 
-  <!-- Filter Form (Sticky) -->
+  <!-- Filter Form -->
   <form method="GET" action="admin_listings.php" class="filter-form">
-    <!-- Search -->
     <input type="text" name="search" placeholder="Search listings..."
            value="<?= isset($_GET['search']) ? htmlspecialchars($_GET['search']) : '' ?>">
-
-    <!-- Category -->
     <select name="category">
       <option value="">All Categories</option>
       <option value="Books" <?= (isset($_GET['category']) && $_GET['category']=="Books")?"selected":""; ?>>Books</option>
@@ -250,8 +290,6 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
       <option value="Services" <?= (isset($_GET['category']) && $_GET['category']=="Services")?"selected":""; ?>>Services</option>
       <option value="Other" <?= (isset($_GET['category']) && $_GET['category']=="Other")?"selected":""; ?>>Other</option>
     </select>
-
-    <!-- Status -->
     <select name="status">
       <option value="">All Statuses</option>
       <option value="active" <?= (isset($_GET['status']) && $_GET['status']=="active")?"selected":""; ?>>Active</option>
@@ -259,24 +297,16 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
       <option value="traded" <?= (isset($_GET['status']) && $_GET['status']=="traded")?"selected":""; ?>>Traded</option>
       <option value="removed" <?= (isset($_GET['status']) && $_GET['status']=="removed")?"selected":""; ?>>Removed</option>
     </select>
-
-    <!-- Date Range -->
-    <input type="date" name="start_date"
-           value="<?= isset($_GET['start_date']) ? htmlspecialchars($_GET['start_date']) : '' ?>">
-    <input type="date" name="end_date"
-           value="<?= isset($_GET['end_date']) ? htmlspecialchars($_GET['end_date']) : '' ?>">
-
-    <!-- User ID -->
-    <input type="number" name="user" placeholder="User ID"
-           value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : '' ?>">
-
-    <!-- Action Buttons -->
+    <input type="date" name="start_date" value="<?= isset($_GET['start_date']) ? htmlspecialchars($_GET['start_date']) : '' ?>">
+    <input type="date" name="end_date" value="<?= isset($_GET['end_date']) ? htmlspecialchars($_GET['end_date']) : '' ?>">
+    <input type="number" name="user" placeholder="User ID" value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : '' ?>">
     <button type="submit">Apply Filters</button>
     <a href="admin_listings.php" class="reset-link">Reset</a>
-    <!-- Export Buttons -->
-    <button type="submit" name="export" value="csv">⬇️ Export CSV</button>
-    <button type="submit" name="export" value="json">⬇️ Export JSON</button>
-    <button type="submit" name="export" value="xlsx">⬇️ Export Excel</button>
+    <?php if ($role === 'superadmin'): ?>
+      <button type="submit" name="export" value="csv">⬇️ Export CSV</button>
+      <button type="submit" name="export" value="json">⬇️ Export JSON</button>
+      <button type="submit" name="export" value="xlsx">⬇️ Export Excel</button>
+    <?php endif; ?>
   </form>
 
   <!-- Notifications -->
@@ -286,7 +316,7 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
     <div class="notification error" role="alert">❌ <?= htmlspecialchars($_GET['error']); ?></div>
   <?php endif; ?>
 
-  <!-- Listings Container -->
+  <!-- Listings -->
   <div class="listings-container">
     <?php while ($row = $result->fetch_assoc()): ?>
       <div class="card">
@@ -301,29 +331,37 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
     <?php endwhile; ?>
   </div>
 
-  <!-- Collapsible Audit Logs -->
-  <button id="toggleLogs" aria-expanded="false">Show Audit Logs</button>
-  <div id="auditLogs" style="display:none;">
-    <h3>Recent Admin Actions</h3>
-    <table>
-      <tr><th>Admin</th><th>Listing</th><th>Action</th><th>Timestamp</th></tr>
-      <?php
-      $logResult = $conn->query("SELECT a.username, l.title, log.action, log.timestamp 
-                                 FROM admin_logs log 
-                                 JOIN users a ON log.admin_id = a.id 
-                                 JOIN listings l ON log.listing_id = l.id 
-                                 ORDER BY log.timestamp DESC LIMIT 20");
-      while ($log = $logResult->fetch_assoc()) {
-          echo "<tr>
-                  <td>".htmlspecialchars($log['username'])."</td>
-                  <td>".htmlspecialchars($log['title'])."</td>
-                  <td>".htmlspecialchars($log['action'])."</td>
-                  <td>".$log['timestamp']."</td>
-                </tr>";
-      }
-      ?>
-    </table>
-  </div>
+  <!-- Audit Logs -->
+  <?php if ($role === 'superadmin'): ?>
+    <button id="toggleLogs" aria-expanded="false">Show Audit Logs</button>
+    <div id="auditLogs" style="display:none;">
+      <h3>Recent Admin Actions</h3>
+      <form method="GET" action="admin_listings.php">
+        <button type="submit" name="export_logs" value="csv">⬇️ Export Logs CSV</button>
+        <button type="submit" name="export_logs" value="json">⬇️ Export Logs JSON</button>
+      </form>
+      <table>
+        <tr><th>Admin</th><th>Listing</th><th>Action</th><th>IP</th><th>User Agent</th><th>Timestamp</th></tr>
+        <?php
+        $logResult = $conn->query("SELECT a.username, l.title, log.action, log.ip_address, log.user_agent, log.timestamp 
+                                   FROM admin_logs log 
+                                   JOIN users a ON log.admin_id = a.id 
+                                   JOIN listings l ON log.listing_id = l.id 
+                                   ORDER BY log.timestamp DESC LIMIT 20");
+        while ($log = $logResult->fetch_assoc()) {
+            echo "<tr>
+                    <td>".htmlspecialchars($log['username'])."</td>
+                    <td>".htmlspecialchars($log['title'])."</td>
+                    <td>".htmlspecialchars($log['action'])."</td>
+                    <td>".htmlspecialchars($log['ip_address'])."</td>
+                    <td>".htmlspecialchars($log['user_agent'])."</td>
+                    <td>".$log['timestamp']."</td>
+                  </tr>";
+        }
+        ?>
+      </table>
+    </div>
+  <?php endif; ?>
 </main>
 
 <!-- Back to Top Button -->
@@ -331,7 +369,7 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
 
 <script>
 // Collapsible Audit Logs
-document.getElementById('toggleLogs').addEventListener('click', function() {
+document.getElementById('toggleLogs')?.addEventListener('click', function() {
   const logs = document.getElementById('auditLogs');
   const expanded = logs.style.display === 'block';
   logs.style.display = expanded ? 'none' : 'block';
