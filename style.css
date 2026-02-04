@@ -65,6 +65,23 @@ main {
 }
 
 /* ===========================
+   Sticky Filter Bar
+=========================== */
+.filter-form {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  padding: 10px;
+  z-index: 1000;
+  border-bottom: 1px solid #ddd;
+}
+
+body.dark-mode .filter-form {
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+}
+
+/* ===========================
    Tables
 =========================== */
 table {
@@ -359,38 +376,29 @@ body.dark-mode .badge.removed {
 }
 
 /* ===========================
-   Tooltips
+   Collapsible Audit Logs
 =========================== */
-.tooltip {
-  position: relative;
-  display: inline-block;
+#auditLogs {
+  margin-top: 20px;
 }
 
-.tooltip .tooltiptext {
-  visibility: hidden;
-  max-width: 200px;
-  white-space: normal;
-  background-color: #333;
+#toggleLogs {
+  background-color: #007bff;
   color: #fff;
-  text-align: center;
-  border-radius: 6px;
-  padding: 6px 8px;
-  position: absolute;
-  z-index: 1;
-  bottom: 125%;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
 }
 
-.tooltip:hover .tooltiptext,
-.tooltip:focus .tooltiptext {
-  visibility: visible;
-  opacity: 1;
+#toggleLogs:hover {
+  background-color: #0056b3;
 }
 
-/* Disabled Pagination Links */
+/* ===========================
+   Disabled Pagination Links
+=========================== */
 .page-link.disabled {
   color: #aaa;
   pointer-events: none;
