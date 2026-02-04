@@ -43,27 +43,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Single listing actions
-    $listing_id = intval($_POST['listing_id']);
-    $action     = $_POST['action'];
+    if (isset($_POST['listing_id'])) {
+        $listing_id = intval($_POST['listing_id']);
+        $action     = $_POST['action'];
 
-    if ($action === 'approve') {
-        $stmt = $conn->prepare("UPDATE listings SET status='active' WHERE id=?");
-    } elseif ($action === 'remove') {
-        $stmt = $conn->prepare("UPDATE listings SET status='removed', removed_at=NOW() WHERE id=?");
+        if ($action === 'approve') {
+            $stmt = $conn->prepare("UPDATE listings SET status='active' WHERE id=?");
+        } elseif ($action === 'remove') {
+            $stmt = $conn->prepare("UPDATE listings SET status='removed', removed_at=NOW() WHERE id=?");
+        }
+
+        if (isset($stmt)) {
+            $stmt->bind_param("i", $listing_id);
+            $stmt->execute();
+            // Log action
+            $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, timestamp) VALUES (?, ?, ?, NOW())");
+            $logStmt->bind_param("iis", $_SESSION['admin_id'], $listing_id, $action);
+            $logStmt->execute();
+            $logStmt->close();
+        }
+
+        header("Location: admin_listings.php?success=1");
+        exit;
     }
-
-    if (isset($stmt)) {
-        $stmt->bind_param("i", $listing_id);
-        $stmt->execute();
-        // Log action
-        $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, timestamp) VALUES (?, ?, ?, NOW())");
-        $logStmt->bind_param("iis", $_SESSION['admin_id'], $listing_id, $action);
-        $logStmt->execute();
-        $logStmt->close();
-    }
-
-    header("Location: admin_listings.php?success=1");
-    exit;
 }
 
 // Pagination setup
@@ -139,9 +141,10 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 /* ---------------------------
-   Export query (no pagination)
+   Export query (multi-format)
 ---------------------------- */
-if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+if (isset($_GET['export'])) {
+    $exportType = $_GET['export'];
     $exportQuery = $baseQuery . " ORDER BY l.created_at DESC";
     $exportStmt = $conn->prepare($exportQuery);
     if (!empty($params)) {
@@ -150,27 +153,46 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     $exportStmt->execute();
     $exportResult = $exportStmt->get_result();
 
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename=listings_export.csv');
-    $output = fopen('php://output', 'w');
-
-    fputcsv($output, ['ID','Title','Description','Category','Price','Status','User','Created At']);
-
-    while ($row = $exportResult->fetch_assoc()) {
-        fputcsv($output, [
-            $row['id'],
-            $row['title'],
-            $row['description'],
-            $row['category'],
-            $row['price'],
-            $row['status'],
-            $row['username'],
-            $row['created_at']
-        ]);
+    if ($exportType === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=listings_export.csv');
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['ID','Title','Description','Category','Price','Status','User','Created At']);
+        while ($row = $exportResult->fetch_assoc()) {
+            fputcsv($output, [$row['id'],$row['title'],$row['description'],$row['category'],$row['price'],$row['status'],$row['username'],$row['created_at']]);
+        }
+        fclose($output);
+        exit;
     }
 
-    fclose($output);
-    exit;
+    if ($exportType === 'json') {
+        header('Content-Type: application/json; charset=utf-8');
+        $rows = [];
+        while ($row = $exportResult->fetch_assoc()) {
+            $rows[] = $row;
+        }
+        echo json_encode($rows, JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    if ($exportType === 'xlsx') {
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename=listings_export.xlsx');
+        echo '<?xml version="1.0"?>
+        <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">
+          <Worksheet ss:Name="Listings">
+            <Table>';
+        echo '<Row><Cell><Data ss:Type="String">ID</Data></Cell><Cell><Data ss:Type="String">Title</Data></Cell><Cell><Data ss:Type="String">Description</Data></Cell><Cell><Data ss:Type="String">Category</Data></Cell><Cell><Data ss:Type="String">Price</Data></Cell><Cell><Data ss:Type="String">Status</Data></Cell><Cell><Data ss:Type="String">User</Data></Cell><Cell><Data ss:Type="String">Created At</Data></Cell></Row>';
+        while ($row = $exportResult->fetch_assoc()) {
+            echo '<Row>';
+            foreach (['id','title','description','category','price','status','username','created_at'] as $col) {
+                echo '<Cell><Data ss:Type="String">'.htmlspecialchars($row[$col]).'</Data></Cell>';
+            }
+            echo '</Row>';
+        }
+        echo '</Table></Worksheet></Workbook>';
+        exit;
+    }
 }
 
 /* ---------------------------
@@ -196,10 +218,13 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
 <main>
   <h2>Admin: Manage Listings</h2>
 
-  <!-- Filter Form -->
+  <!-- Filter Form (Sticky) -->
   <form method="GET" action="admin_listings.php" class="filter-form">
+    <!-- Search -->
     <input type="text" name="search" placeholder="Search listings..."
            value="<?= isset($_GET['search']) ? htmlspecialchars($_GET['search']) : '' ?>">
+
+    <!-- Category -->
     <select name="category">
       <option value="">All Categories</option>
       <option value="Books" <?= (isset($_GET['category']) && $_GET['category']=="Books")?"selected":""; ?>>Books</option>
@@ -207,6 +232,8 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
       <option value="Services" <?= (isset($_GET['category']) && $_GET['category']=="Services")?"selected":""; ?>>Services</option>
       <option value="Other" <?= (isset($_GET['category']) && $_GET['category']=="Other")?"selected":""; ?>>Other</option>
     </select>
+
+    <!-- Status -->
     <select name="status">
       <option value="">All Statuses</option>
       <option value="active" <?= (isset($_GET['status']) && $_GET['status']=="active")?"selected":""; ?>>Active</option>
@@ -215,18 +242,23 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
       <option value="removed" <?= (isset($_GET['status']) && $_GET['status']=="removed")?"selected":""; ?>>Removed</option>
     </select>
 
-    <!-- Date Range Filters -->
+    <!-- Date Range -->
     <input type="date" name="start_date"
            value="<?= isset($_GET['start_date']) ? htmlspecialchars($_GET['start_date']) : '' ?>">
     <input type="date" name="end_date"
            value="<?= isset($_GET['end_date']) ? htmlspecialchars($_GET['end_date']) : '' ?>">
 
+    <!-- User ID -->
     <input type="number" name="user" placeholder="User ID"
            value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : '' ?>">
 
+    <!-- Action Buttons -->
     <button type="submit">Apply Filters</button>
     <a href="admin_listings.php" class="reset-link">Reset</a>
+    <!-- Export Buttons -->
     <button type="submit" name="export" value="csv">⬇️ Export CSV</button>
+    <button type="submit" name="export" value="json">⬇️ Export JSON</button>
+    <button type="submit" name="export" value="xlsx">⬇️ Export Excel</button>
   </form>
 
   <!-- Notifications -->
@@ -245,6 +277,11 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
     </select>
     <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
     <button type="submit">Apply</button>
+
+    <!-- Select All Checkbox -->
+    <label>
+      <input type="checkbox" id="selectAll" aria-label="Select all listings"> Select All Listings
+    </label>
 
     <!-- Listings -->
     <div class="listings-container">
@@ -300,30 +337,50 @@ foreach (['category','search','status','user','start_date','end_date'] as $param
     </div>
   </form>
 
-  <!-- Audit Logs -->
-  <h3>Recent Admin Actions</h3>
-  <table>
-    <tr><th>Admin</th><th>Listing</th><th>Action</th><th>Timestamp</th></tr>
-    <?php
-    $logResult = $conn->query("SELECT a.username, l.title, log.action, log.timestamp 
-                               FROM admin_logs log 
-                               JOIN users a ON log.admin_id = a.id 
-                               JOIN listings l ON log.listing_id = l.id 
-                               ORDER BY log.timestamp DESC LIMIT 20");
-    while ($log = $logResult->fetch_assoc()) {
-        echo "<tr>
-                <td>".htmlspecialchars($log['username'])."</td>
-                <td>".htmlspecialchars($log['title'])."</td>
-                <td>".htmlspecialchars($log['action'])."</td>
-                <td>".$log['timestamp']."</td>
-              </tr>";
-    }
-    ?>
-  </table>
+  <!-- Collapsible Audit Logs -->
+  <button id="toggleLogs" aria-expanded="false">Show Audit Logs</button>
+  <div id="auditLogs" style="display:none;">
+    <h3>Recent Admin Actions</h3>
+    <table>
+      <tr><th>Admin</th><th>Listing</th><th>Action</th><th>Timestamp</th></tr>
+      <?php
+      $logResult = $conn->query("SELECT a.username, l.title, log.action, log.timestamp 
+                                 FROM admin_logs log 
+                                 JOIN users a ON log.admin_id = a.id 
+                                 JOIN listings l ON log.listing_id = l.id 
+                                 ORDER BY log.timestamp DESC LIMIT 20");
+      while ($log = $logResult->fetch_assoc()) {
+          echo "<tr>
+                  <td>".htmlspecialchars($log['username'])."</td>
+                  <td>".htmlspecialchars($log['title'])."</td>
+                  <td>".htmlspecialchars($log['action'])."</td>
+                  <td>".$log['timestamp']."</td>
+                </tr>";
+      }
+      ?>
+    </table>
+  </div>
 </main>
 
 <!-- Back to Top Button -->
 <button id="backToTop" class="btn-top">⬆️ Back to Top</button>
+
+<script>
+// Select All functionality
+document.getElementById('selectAll').addEventListener('change', function() {
+  const checkboxes = document.querySelectorAll('input[name="selected_listings[]"]');
+  checkboxes.forEach(cb => cb.checked = this.checked);
+});
+
+// Collapsible Audit Logs
+document.getElementById('toggleLogs').addEventListener('click', function() {
+  const logs = document.getElementById('auditLogs');
+  const expanded = logs.style.display === 'block';
+  logs.style.display = expanded ? 'none' : 'block';
+  this.textContent = expanded ? 'Show Audit Logs' : 'Hide Audit Logs';
+  this.setAttribute('aria-expanded', !expanded);
+});
+</script>
 
 </body>
 </html>
