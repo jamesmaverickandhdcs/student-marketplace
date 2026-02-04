@@ -42,39 +42,43 @@ $page   = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $offset = ($page - 1) * $limit;
 
 /* ---------------------------
-   Build dynamic query for count
+   Build base query for listings
 ---------------------------- */
-$countQuery  = "SELECT COUNT(*) AS total FROM listings WHERE 1=1";
-$countParams = [];
-$countTypes  = "";
+$baseQuery = "SELECT l.*, u.username FROM listings l JOIN users u ON l.user_id = u.id WHERE 1=1";
+$params = [];
+$types  = "";
 
-// Filters
+// Apply filters
 if (!empty($_GET['category'])) {
-    $countQuery .= " AND category = ?";
-    $countParams[] = $_GET['category'];
-    $countTypes   .= "s";
+    $baseQuery .= " AND l.category = ?";
+    $params[] = $_GET['category'];
+    $types   .= "s";
 }
 if (!empty($_GET['search'])) {
-    $countQuery .= " AND (title LIKE ? OR description LIKE ?)";
-    $searchTerm   = "%" . $_GET['search'] . "%";
-    $countParams[] = $searchTerm;
-    $countParams[] = $searchTerm;
-    $countTypes   .= "ss";
+    $baseQuery .= " AND (l.title LIKE ? OR l.description LIKE ?)";
+    $searchTerm = "%" . $_GET['search'] . "%";
+    $params[]   = $searchTerm;
+    $params[]   = $searchTerm;
+    $types     .= "ss";
 }
 if (!empty($_GET['status'])) {
-    $countQuery .= " AND status = ?";
-    $countParams[] = $_GET['status'];
-    $countTypes   .= "s";
+    $baseQuery .= " AND l.status = ?";
+    $params[] = $_GET['status'];
+    $types   .= "s";
 }
 if (!empty($_GET['user'])) {
-    $countQuery .= " AND user_id = ?";
-    $countParams[] = $_GET['user'];
-    $countTypes   .= "i";
+    $baseQuery .= " AND l.user_id = ?";
+    $params[] = $_GET['user'];
+    $types   .= "i";
 }
 
+/* ---------------------------
+   Count query
+---------------------------- */
+$countQuery = str_replace("SELECT l.*, u.username", "SELECT COUNT(*) AS total", $baseQuery);
 $countStmt = $conn->prepare($countQuery);
-if (!empty($countParams)) {
-    $countStmt->bind_param($countTypes, ...$countParams);
+if (!empty($params)) {
+    $countStmt->bind_param($types, ...$params);
 }
 $countStmt->execute();
 $totalListings = $countStmt->get_result()->fetch_assoc()['total'];
@@ -83,73 +87,25 @@ $countStmt->close();
 $totalPages = ceil($totalListings / $limit);
 
 /* ---------------------------
-   Build dynamic query for listings
+   Display query (with pagination)
 ---------------------------- */
-$query  = "SELECT l.*, u.username FROM listings l JOIN users u ON l.user_id = u.id WHERE 1=1";
-$params = [];
-$types  = "";
-
-// Apply filters
-if (!empty($_GET['category'])) {
-    $query .= " AND l.category = ?";
-    $params[] = $_GET['category'];
-    $types   .= "s";
-}
-if (!empty($_GET['search'])) {
-    $query .= " AND (l.title LIKE ? OR l.description LIKE ?)";
-    $searchTerm = "%" . $_GET['search'] . "%";
-    $params[]   = $searchTerm;
-    $params[]   = $searchTerm;
-    $types     .= "ss";
-}
-if (!empty($_GET['status'])) {
-    $query .= " AND l.status = ?";
-    $params[] = $_GET['status'];
-    $types   .= "s";
-}
-if (!empty($_GET['user'])) {
-    $query .= " AND l.user_id = ?";
-    $params[] = $_GET['user'];
-    $types   .= "i";
-}
-
-// Sorting
-$query .= " ORDER BY l.created_at DESC";
-
-// Pagination
-$query .= " LIMIT ? OFFSET ?";
-$params[] = $limit;
-$params[] = $offset;
-$types   .= "ii";
+$query = $baseQuery . " ORDER BY l.created_at DESC LIMIT ? OFFSET ?";
+$displayParams = array_merge($params, [$limit, $offset]);
+$displayTypes  = $types . "ii";
 
 $stmt = $conn->prepare($query);
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
-}
+$stmt->bind_param($displayTypes, ...$displayParams);
 $stmt->execute();
 $result = $stmt->get_result();
 
 /* ---------------------------
-   Build filter query string for pagination
----------------------------- */
-$filterQuery = '';
-foreach (['category','search','status','user'] as $param) {
-    if (!empty($_GET[$param])) {
-        $filterQuery .= '&' . $param . '=' . urlencode($_GET[$param]);
-    }
-}
-
-/* ---------------------------
-   Handle CSV export
+   Export query (no pagination)
 ---------------------------- */
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
-    $exportQuery = str_replace(" LIMIT ? OFFSET ?", "", $query); // remove pagination
+    $exportQuery = $baseQuery . " ORDER BY l.created_at DESC";
     $exportStmt = $conn->prepare($exportQuery);
     if (!empty($params)) {
-        // remove last two pagination params
-        $exportParams = array_slice($params, 0, -2);
-        $exportTypes  = substr($types, 0, -2);
-        $exportStmt->bind_param($exportTypes, ...$exportParams);
+        $exportStmt->bind_param($types, ...$params);
     }
     $exportStmt->execute();
     $exportResult = $exportStmt->get_result();
@@ -175,6 +131,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 
     fclose($output);
     exit;
+}
+
+/* ---------------------------
+   Build filter query string for pagination
+---------------------------- */
+$filterQuery = '';
+foreach (['category','search','status','user'] as $param) {
+    if (!empty($_GET[$param])) {
+        $filterQuery .= '&' . $param . '=' . urlencode($_GET[$param]);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -223,31 +189,31 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
   <?php endif; ?>
 
   <!-- Listings -->
-<div class="listings-container">
-  <?php if ($result->num_rows > 0): ?>
-    <?php while ($row = $result->fetch_assoc()): ?>
-      <div class="card">
-        <h3><?= htmlspecialchars($row['title']); ?></h3>
-        <p><?= htmlspecialchars($row['description']); ?></p>
-        <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
-        <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
-        <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
-        <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
-        <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+  <div class="listings-container">
+    <?php if ($result->num_rows > 0): ?>
+      <?php while ($row = $result->fetch_assoc()): ?>
+        <div class="card">
+          <h3><?= htmlspecialchars($row['title']); ?></h3>
+          <p><?= htmlspecialchars($row['description']); ?></p>
+          <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+          <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+          <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
+          <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+          <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
 
-        <!-- Moderation Actions -->
-        <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
-          <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
-          <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
-          <?php if ($row['status'] !== 'active'): ?>
-            <button type="submit" name="action" value="approve">Approve</button>
-          <?php endif; ?>
-          <?php if ($row['status'] !== 'removed'): ?>
-            <button type="submit" name="action" value="remove">Remove</button>
-          <?php endif; ?>
-        </form>
-      </div>
-    <?php endwhile; ?>
+          <!-- Moderation Actions -->
+          <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
+            <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
+            <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+            <?php if ($row['status'] !== 'active'): ?>
+              <button type="submit" name="action" value="approve" aria-label="Approve listing">Approve</button>
+            <?php endif; ?>
+            <?php if ($row['status'] !== 'removed'): ?>
+              <button type="submit" name="action" value="remove" aria-label="Remove listing">Remove</button>
+            <?php endif; ?>
+          </form>
+        </div>
+      <?php endwhile; ?>
 
       <!-- Pagination -->
       <div class="pagination">
@@ -283,6 +249,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 <?php
 if (isset($stmt)) {
     $stmt->close();
+}
+if (isset($exportStmt)) {
+    $exportStmt->close();
 }
 $conn->close();
 ?>
