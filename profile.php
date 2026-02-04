@@ -201,7 +201,8 @@ foreach (['category','search','min_price','max_price','status','sort'] as $param
     <?php if ($result->num_rows > 0): ?>
       <?php while ($row = $result->fetch_assoc()): ?>
         <div class="card">
-          <img src="<?= !empty($row['image']) ? htmlspecialchars($row['image']) : 'images/placeholder.png' ?>" alt="Item image">
+          <img src="<?= !empty($row['image']) ? htmlspecialchars($row['image']) : 'images/placeholder.png' ?>" 
+            alt="<?= !empty($row['image']) ? 'Item image' : 'No image available' ?>">
           <h3><?= htmlspecialchars($row['title']); ?></h3>
           <p><?= htmlspecialchars($row['description']); ?></p>
           <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
@@ -213,6 +214,7 @@ foreach (['category','search','min_price','max_price','status','sort'] as $param
             <?php if ($row['status']=='traded') echo " on ".$row['traded_at']; ?>
           </p>
 
+          <!-- Lifecycle Actions -->
           <div class="card-actions">
             <a href="edit_listing.php?id=<?= $row['id']; ?>" class="btn-edit">✏️ Edit</a>
             <form method="POST" action="profile.php" class="inline-form" onsubmit="return confirm('Change listing status?');">
@@ -226,14 +228,19 @@ foreach (['category','search','min_price','max_price','status','sort'] as $param
                 </div>
                 <div class="tooltip">
                   <button type="submit" name="action" value="traded">Mark as Traded</button>
-                  <span class="tooltiptext">Mark listing as traded
-
-                                    <span class="tooltiptext">Mark listing as traded</span>
+                  <span class="tooltiptext">Mark listing as traded</span>
                 </div>
+
               <?php elseif ($row['status'] === 'postponed'): ?>
                 <div class="tooltip">
                   <button type="submit" name="action" value="reactivate">Reactivate</button>
                   <span class="tooltiptext">Reactivate listing to active</span>
+                </div>
+
+              <?php elseif ($row['status'] === 'traded'): ?>
+                <div class="tooltip">
+                  <button type="button" disabled>Already Traded</button>
+                  <span class="tooltiptext">This listing is completed</span>
                 </div>
               <?php endif; ?>
             </form>
@@ -242,19 +249,25 @@ foreach (['category','search','min_price','max_price','status','sort'] as $param
       <?php endwhile; ?>
 
       <!-- Pagination -->
-      <div class="pagination">
-        <?php if ($page > 1): ?>
-          <a href="profile.php?page=1<?= $filterQuery ?>" class="page-link">First</a>
-          <a href="profile.php?page=<?= $page - 1 ?><?= $filterQuery ?>" class="page-link">Previous</a>
-        <?php endif; ?>
+        <div class="pagination">
+          <?php if ($page > 1): ?>
+            <a href="profile.php?page=1<?= $filterQuery ?>" class="page-link" aria-label="First page">« First</a>
+            <a href="profile.php?page=<?= $page - 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Previous page">‹ Previous</a>
+          <?php else: ?>
+            <span class="page-link disabled" aria-disabled="true">« First</span>
+            <span class="page-link disabled" aria-disabled="true">‹ Previous</span>
+          <?php endif; ?>
 
-        <span class="current-page">Page <?= $page ?> of <?= $totalPages ?></span>
+          <span class="current-page">Page <?= $page ?> of <?= $totalPages ?></span>
 
-        <?php if ($page < $totalPages): ?>
-          <a href="profile.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link">Next</a>
-          <a href="profile.php?page=<?= $totalPages ?><?= $filterQuery ?>" class="page-link">Last</a>
-        <?php endif; ?>
-      </div>
+          <?php if ($page < $totalPages): ?>
+            <a href="profile.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Next page">Next ›</a>
+            <a href="profile.php?page=<?= $totalPages ?><?= $filterQuery ?>" class="page-link" aria-label="Last page">Last »</a>
+          <?php else: ?>
+            <span class="page-link disabled" aria-disabled="true">Next ›</span>
+            <span class="page-link disabled" aria-disabled="true">Last »</span>
+          <?php endif; ?>
+        </div>
     <?php else: ?>
       <p>You haven’t posted any listings yet.
         <a href="add_listing.php" class="btn">➕ Add your first listing</a>
@@ -272,6 +285,8 @@ foreach (['category','search','min_price','max_price','status','sort'] as $param
 </body>
 </html>
 <?php
-$stmt->close();
+if (isset($stmt)) {
+    $stmt->close();
+}
 $conn->close();
 ?>
