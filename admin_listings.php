@@ -138,6 +138,44 @@ foreach (['category','search','status','user'] as $param) {
         $filterQuery .= '&' . $param . '=' . urlencode($_GET[$param]);
     }
 }
+
+/* ---------------------------
+   Handle CSV export
+---------------------------- */
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $exportQuery = str_replace(" LIMIT ? OFFSET ?", "", $query); // remove pagination
+    $exportStmt = $conn->prepare($exportQuery);
+    if (!empty($params)) {
+        // remove last two pagination params
+        $exportParams = array_slice($params, 0, -2);
+        $exportTypes  = substr($types, 0, -2);
+        $exportStmt->bind_param($exportTypes, ...$exportParams);
+    }
+    $exportStmt->execute();
+    $exportResult = $exportStmt->get_result();
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=listings_export.csv');
+    $output = fopen('php://output', 'w');
+
+    fputcsv($output, ['ID','Title','Description','Category','Price','Status','User','Created At']);
+
+    while ($row = $exportResult->fetch_assoc()) {
+        fputcsv($output, [
+            $row['id'],
+            $row['title'],
+            $row['description'],
+            $row['category'],
+            $row['price'],
+            $row['status'],
+            $row['username'],
+            $row['created_at']
+        ]);
+    }
+
+    fclose($output);
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -174,6 +212,7 @@ foreach (['category','search','status','user'] as $param) {
            value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : '' ?>">
     <button type="submit">Apply Filters</button>
     <a href="admin_listings.php" class="reset-link">Reset</a>
+    <button type="submit" name="export" value="csv">⬇️ Export CSV</button>
   </form>
 
   <!-- Notifications -->
@@ -184,31 +223,31 @@ foreach (['category','search','status','user'] as $param) {
   <?php endif; ?>
 
   <!-- Listings -->
-  <div class="listings-container">
-    <?php if ($result->num_rows > 0): ?>
-      <?php while ($row = $result->fetch_assoc()): ?>
-        <div class="card">
-          <h3><?= htmlspecialchars($row['title']); ?></h3>
-          <p><?= htmlspecialchars($row['description']); ?></p>
-          <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
-          <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
-          <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
-          <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
-          <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+<div class="listings-container">
+  <?php if ($result->num_rows > 0): ?>
+    <?php while ($row = $result->fetch_assoc()): ?>
+      <div class="card">
+        <h3><?= htmlspecialchars($row['title']); ?></h3>
+        <p><?= htmlspecialchars($row['description']); ?></p>
+        <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+        <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+        <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
+        <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+        <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
 
-          <!-- Moderation Actions -->
-          <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
-            <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
-            <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
-            <?php if ($row['status'] !== 'active'): ?>
-              <button type="submit" name="action" value="approve">Approve</button>
-            <?php endif; ?>
-            <?php if ($row['status'] !== 'removed'): ?>
-              <button type="submit" name="action" value="remove">Remove</button>
-            <?php endif; ?>
-          </form>
-        </div>
-      <?php endwhile; ?>
+        <!-- Moderation Actions -->
+        <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
+          <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
+          <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+          <?php if ($row['status'] !== 'active'): ?>
+            <button type="submit" name="action" value="approve">Approve</button>
+          <?php endif; ?>
+          <?php if ($row['status'] !== 'removed'): ?>
+            <button type="submit" name="action" value="remove">Remove</button>
+          <?php endif; ?>
+        </form>
+      </div>
+    <?php endwhile; ?>
 
       <!-- Pagination -->
       <div class="pagination">
