@@ -18,6 +18,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Bulk actions
+    if (isset($_POST['bulk_action']) && !empty($_POST['selected_listings'])) {
+        $action = $_POST['bulk_action'];
+        foreach ($_POST['selected_listings'] as $listing_id) {
+            $listing_id = intval($listing_id);
+            if ($action === 'approve') {
+                $stmt = $conn->prepare("UPDATE listings SET status='active' WHERE id=?");
+            } elseif ($action === 'remove') {
+                $stmt = $conn->prepare("UPDATE listings SET status='removed', removed_at=NOW() WHERE id=?");
+            }
+            if (isset($stmt)) {
+                $stmt->bind_param("i", $listing_id);
+                $stmt->execute();
+                // Log action
+                $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, timestamp) VALUES (?, ?, ?, NOW())");
+                $logStmt->bind_param("iis", $_SESSION['admin_id'], $listing_id, $action);
+                $logStmt->execute();
+                $logStmt->close();
+            }
+        }
+        header("Location: admin_listings.php?success=1");
+        exit;
+    }
+
+    // Single listing actions
     $listing_id = intval($_POST['listing_id']);
     $action     = $_POST['action'];
 
@@ -30,6 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($stmt)) {
         $stmt->bind_param("i", $listing_id);
         $stmt->execute();
+        // Log action
+        $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, timestamp) VALUES (?, ?, ?, NOW())");
+        $logStmt->bind_param("iis", $_SESSION['admin_id'], $listing_id, $action);
+        $logStmt->execute();
+        $logStmt->close();
     }
 
     header("Location: admin_listings.php?success=1");
@@ -70,6 +100,16 @@ if (!empty($_GET['user'])) {
     $baseQuery .= " AND l.user_id = ?";
     $params[] = $_GET['user'];
     $types   .= "i";
+}
+if (!empty($_GET['start_date'])) {
+    $baseQuery .= " AND l.created_at >= ?";
+    $params[] = $_GET['start_date'];
+    $types   .= "s";
+}
+if (!empty($_GET['end_date'])) {
+    $baseQuery .= " AND l.created_at <= ?";
+    $params[] = $_GET['end_date'];
+    $types   .= "s";
 }
 
 /* ---------------------------
@@ -137,7 +177,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
    Build filter query string for pagination
 ---------------------------- */
 $filterQuery = '';
-foreach (['category','search','status','user'] as $param) {
+foreach (['category','search','status','user','start_date','end_date'] as $param) {
     if (!empty($_GET[$param])) {
         $filterQuery .= '&' . $param . '=' . urlencode($_GET[$param]);
     }
@@ -174,8 +214,16 @@ foreach (['category','search','status','user'] as $param) {
       <option value="traded" <?= (isset($_GET['status']) && $_GET['status']=="traded")?"selected":""; ?>>Traded</option>
       <option value="removed" <?= (isset($_GET['status']) && $_GET['status']=="removed")?"selected":""; ?>>Removed</option>
     </select>
+
+    <!-- Date Range Filters -->
+    <input type="date" name="start_date"
+           value="<?= isset($_GET['start_date']) ? htmlspecialchars($_GET['start_date']) : '' ?>">
+    <input type="date" name="end_date"
+           value="<?= isset($_GET['end_date']) ? htmlspecialchars($_GET['end_date']) : '' ?>">
+
     <input type="number" name="user" placeholder="User ID"
            value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : '' ?>">
+
     <button type="submit">Apply Filters</button>
     <a href="admin_listings.php" class="reset-link">Reset</a>
     <button type="submit" name="export" value="csv">⬇️ Export CSV</button>
@@ -183,62 +231,95 @@ foreach (['category','search','status','user'] as $param) {
 
   <!-- Notifications -->
   <?php if (isset($_GET['success']) && $_GET['success'] == 1): ?>
-    <div class="notification success">✅ Action completed successfully!</div>
+    <div class="notification success" role="alert">✅ Action completed successfully!</div>
   <?php elseif (isset($_GET['error'])): ?>
-    <div class="notification error">❌ <?= htmlspecialchars($_GET['error']); ?></div>
+    <div class="notification error" role="alert">❌ <?= htmlspecialchars($_GET['error']); ?></div>
   <?php endif; ?>
 
-  <!-- Listings -->
-  <div class="listings-container">
-    <?php if ($result->num_rows > 0): ?>
-      <?php while ($row = $result->fetch_assoc()): ?>
-        <div class="card">
-          <h3><?= htmlspecialchars($row['title']); ?></h3>
-          <p><?= htmlspecialchars($row['description']); ?></p>
-          <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
-          <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
-          <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
-          <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
-          <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+  <!-- Bulk Action Form -->
+  <form method="POST" action="admin_listings.php" onsubmit="return confirm('Apply bulk action?');">
+    <select name="bulk_action" required>
+      <option value="">Bulk Action</option>
+      <option value="approve">Approve Selected</option>
+      <option value="remove">Remove Selected</option>
+    </select>
+    <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+    <button type="submit">Apply</button>
 
-          <!-- Moderation Actions -->
-          <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
-            <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
-            <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
-            <?php if ($row['status'] !== 'active'): ?>
-              <button type="submit" name="action" value="approve" aria-label="Approve listing">Approve</button>
-            <?php endif; ?>
-            <?php if ($row['status'] !== 'removed'): ?>
-              <button type="submit" name="action" value="remove" aria-label="Remove listing">Remove</button>
-            <?php endif; ?>
-          </form>
+    <!-- Listings -->
+    <div class="listings-container">
+      <?php if ($result->num_rows > 0): ?>
+        <?php while ($row = $result->fetch_assoc()): ?>
+          <div class="card">
+            <input type="checkbox" name="selected_listings[]" value="<?= $row['id']; ?>">
+            <h3><?= htmlspecialchars($row['title']); ?></h3>
+            <p><?= htmlspecialchars($row['description']); ?></p>
+            <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+            <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+            <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
+            <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+            <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+
+            <!-- Moderation Actions -->
+            <form method="POST" action="admin_listings.php" class="inline-form" onsubmit="return confirm('Confirm action?');">
+              <input type="hidden" name="listing_id" value="<?= $row['id']; ?>">
+              <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+              <?php if ($row['status'] !== 'active'): ?>
+                <button type="submit" name="action" value="approve" aria-label="Approve listing">Approve</button>
+              <?php endif; ?>
+              <?php if ($row['status'] !== 'removed'): ?>
+                <button type="submit" name="action" value="remove" aria-label="Remove listing">Remove</button>
+              <?php endif; ?>
+            </form>
+          </div>
+        <?php endwhile; ?>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <?php if ($page > 1): ?>
+            <a href="admin_listings.php?page=1<?= $filterQuery ?>" class="page-link" aria-label="First page">« First</a>
+            <a href="admin_listings.php?page=<?= $page - 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Previous page">‹ Previous</a>
+          <?php else: ?>
+            <span class="page-link disabled" aria-disabled="true">« First</span>
+            <span class="page-link disabled" aria-disabled="true">‹ Previous</span>
+          <?php endif; ?>
+
+          <span class="current-page">Page <?= $page ?> of <?= $totalPages ?></span>
+
+          <?php if ($page < $totalPages): ?>
+            <a href="admin_listings.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Next page">Next ›</a>
+            <a href="admin_listings.php?page=<?= $totalPages ?><?= $filterQuery ?>" class="page-link" aria-label="Last page">Last »</a>
+          <?php else: ?>
+            <span class="page-link disabled" aria-disabled="true">Next ›</span>
+            <span class="page-link disabled" aria-disabled="true">Last »</span>
+          <?php endif; ?>
         </div>
-      <?php endwhile; ?>
+      <?php else: ?>
+        <p>No listings found.</p>
+      <?php endif; ?>
+    </div>
+  </form>
 
-      <!-- Pagination -->
-      <div class="pagination">
-        <?php if ($page > 1): ?>
-          <a href="admin_listings.php?page=1<?= $filterQuery ?>" class="page-link" aria-label="First page">« First</a>
-          <a href="admin_listings.php?page=<?= $page - 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Previous page">‹ Previous</a>
-        <?php else: ?>
-          <span class="page-link disabled" aria-disabled="true">« First</span>
-          <span class="page-link disabled" aria-disabled="true">‹ Previous</span>
-        <?php endif; ?>
-
-        <span class="current-page">Page <?= $page ?> of <?= $totalPages ?></span>
-
-        <?php if ($page < $totalPages): ?>
-          <a href="admin_listings.php?page=<?= $page + 1 ?><?= $filterQuery ?>" class="page-link" aria-label="Next page">Next ›</a>
-          <a href="admin_listings.php?page=<?= $totalPages ?><?= $filterQuery ?>" class="page-link" aria-label="Last page">Last »</a>
-        <?php else: ?>
-          <span class="page-link disabled" aria-disabled="true">Next ›</span>
-          <span class="page-link disabled" aria-disabled="true">Last »</span>
-        <?php endif; ?>
-      </div>
-    <?php else: ?>
-      <p>No listings found.</p>
-    <?php endif; ?>
-  </div>
+  <!-- Audit Logs -->
+  <h3>Recent Admin Actions</h3>
+  <table>
+    <tr><th>Admin</th><th>Listing</th><th>Action</th><th>Timestamp</th></tr>
+    <?php
+    $logResult = $conn->query("SELECT a.username, l.title, log.action, log.timestamp 
+                               FROM admin_logs log 
+                               JOIN users a ON log.admin_id = a.id 
+                               JOIN listings l ON log.listing_id = l.id 
+                               ORDER BY log.timestamp DESC LIMIT 20");
+    while ($log = $logResult->fetch_assoc()) {
+        echo "<tr>
+                <td>".htmlspecialchars($log['username'])."</td>
+                <td>".htmlspecialchars($log['title'])."</td>
+                <td>".htmlspecialchars($log['action'])."</td>
+                <td>".$log['timestamp']."</td>
+              </tr>";
+    }
+    ?>
+  </table>
 </main>
 
 <!-- Back to Top Button -->
@@ -247,11 +328,7 @@ foreach (['category','search','status','user'] as $param) {
 </body>
 </html>
 <?php
-if (isset($stmt)) {
-    $stmt->close();
-}
-if (isset($exportStmt)) {
-    $exportStmt->close();
-}
+if (isset($stmt)) { $stmt->close(); }
+if (isset($exportStmt)) { $exportStmt->close(); }
 $conn->close();
 ?>
