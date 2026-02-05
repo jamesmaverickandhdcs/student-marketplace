@@ -112,6 +112,33 @@ table tr:hover {
   background-color: #f1f1f1;
 }
 
+/* Admin Listings Table */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  font-size: 0.95em;
+  background: #fff;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+
+.admin-table th {
+  background: #f4f4f4;
+  font-weight: bold;
+}
+
+.admin-table tr:hover {
+  background: #f9f9f9;
+}
+
 /* ===========================
    Buttons
 =========================== */
@@ -155,6 +182,68 @@ button[name="action"][value="reactivate"] {
 
 button[name="action"][value="reactivate"]:hover {
   background-color: #218838;
+}
+
+/* Inline Forms (row actions) */
+.inline-form button {
+  margin: 0 2px;
+  padding: 6px 10px;
+  font-size: 0.85em;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #0078d7;
+  color: #fff;
+  transition: background 0.2s ease;
+}
+
+.inline-form button:hover {
+  background: #005a9e;
+}
+
+/* ===========================
+   Bulk Actions UI
+=========================== */
+.bulk-actions {
+  margin: 15px 0;
+  padding: 10px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.bulk-actions select {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.bulk-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #28a745;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.bulk-actions button:hover {
+  background: #218838;
+}
+
+body.dark-mode .bulk-actions {
+  background: #1e1e1e;
+  border: 1px solid #333;
+}
+
+/* Checkbox Styling */
+input[type="checkbox"] {
+  transform: scale(1.2);
+  cursor: pointer;
 }
 
 /* ===========================
@@ -215,43 +304,27 @@ button[name="action"][value="reactivate"]:hover {
 }
 
 /* ===========================
-   Responsive Design
+   User Notifications Section
 =========================== */
-@media (max-width: 600px) {
-  nav ul {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  table {
-    font-size: 0.85em;
-  }
-
-  button {
-    padding: 5px 10px;
-    font-size: 0.8em;
-  }
+.notifications {
+  margin: 20px;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 6px;
 }
 
-/* ===========================
-   Dark Mode
-=========================== */
-body.dark-mode {
-  background-color: #121212;
-  color: #e0e0e0;
+.notification.unread {
+  font-weight: bold;
+  background: #eef;
 }
 
-body.dark-mode table {
-  background-color: #1e1e1e;
-  border: 1px solid #333;
+.notification.read {
+  color: #555;
 }
 
-body.dark-mode table th {
-  background-color: #444;
-}
-
-body.dark-mode table td {
-  color: #ddd;
+.notification .time {
+  font-size: 0.8em;
+  color: #999;
 }
 
 /* ===========================
@@ -296,33 +369,6 @@ body.dark-mode table td {
 .card .posted {
   font-size: 0.85em;
   color: #777;
-}
-
-/* Dark Mode Cards */
-body.dark-mode .card {
-  background-color: #1e1e1e;
-  border: 1px solid #333;
-  box-shadow: 0 2px 6px rgba(255, 255, 255, 0.05);
-}
-
-body.dark-mode .card h3 {
-  color: #e0e0e0;
-}
-
-body.dark-mode .card p {
-  color: #ccc;
-}
-
-body.dark-mode .card .price {
-  color: #4caf50;
-}
-
-body.dark-mode .card .category {
-  color: #bbb;
-}
-
-body.dark-mode .card .posted {
-  color: #999;
 }
 
 /* ===========================
@@ -406,28 +452,6 @@ body.dark-mode .badge.removed {
 }
 
 /* ===========================
-   Bulk Actions UI
-=========================== */
-.bulk-actions {
-  margin: 10px 0;
-  padding: 10px;
-  background: #f9f9f9;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-body.dark-mode .bulk-actions {
-  background: #1e1e1e;
-  border: 1px solid #333;
-}
-
-.card input[type="checkbox"] {
-  margin-right: 8px;
-  transform: scale(1.2);
-  cursor: pointer;
-}
-
-/* ===========================
    Date Range Filter
 =========================== */
 .date-range {
@@ -436,16 +460,125 @@ body.dark-mode .bulk-actions {
   gap: 10px;
   margin: 5px 0;
 }
+
 .date-range label {
   font-weight: bold;
 }
+
 .date-range input[type="date"] {
   padding: 4px 6px;
   border: 1px solid #ccc;
   border-radius: 4px;
 }
+
 body.dark-mode .date-range input[type="date"] {
   background: #1e1e1e;
   border: 1px solid #333;
   color: #eee;
+}
+
+/* ===========================
+   Responsive Design
+=========================== */
+@media (max-width: 600px) {
+  nav ul {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  table {
+    font-size: 0.85em;
+  }
+
+  button {
+    padding: 5px 10px;
+    font-size: 0.8em;
+  }
+}
+
+/* ===========================
+   Dark Mode Global
+=========================== */
+body.dark-mode {
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+body.dark-mode table {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+}
+
+body.dark-mode table th {
+  background-color: #444;
+}
+
+body.dark-mode table td {
+  color: #ddd;
+}
+
+body.dark-mode .card {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  box-shadow: 0 2px 6px rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .card h3 {
+  color: #e0e0e0;
+}
+
+body.dark-mode .card p {
+  color: #ccc;
+}
+
+body.dark-mode .card .price {
+  color: #4caf50;
+}
+
+body.dark-mode .card .category {
+  color: #bbb;
+}
+
+body.dark-mode .card .posted {
+  color: #999;
+}
+
+.favorites,
+.messages {
+  margin: 20px;
+  padding: 15px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.favorites h2,
+.messages h2 {
+  margin-bottom: 10px;
+  font-size: 1.2em;
+}
+
+.message {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.message:last-child {
+  border-bottom: none;
+}
+
+.message .time {
+  font-size: 0.8em;
+  color: #999;
+}
+
+/* Dark Mode */
+body.dark-mode .favorites,
+body.dark-mode .messages {
+  background: #1e1e1e;
+  border: 1px solid #333;
+}
+
+body.dark-mode .message {
+  border-bottom: 1px solid #444;
 }
