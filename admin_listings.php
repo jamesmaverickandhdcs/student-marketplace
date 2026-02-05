@@ -55,33 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: admin_listings.php?success=1");
         exit;
     }
-
-    // Single listing actions (moderators allowed)
-    if (isset($_POST['listing_id'])) {
-        $listing_id = intval($_POST['listing_id']);
-        $action     = $_POST['action'];
-
-        if ($action === 'approve') {
-            $stmt = $conn->prepare("UPDATE listings SET status='active' WHERE id=?");
-        } elseif ($action === 'remove') {
-            $stmt = $conn->prepare("UPDATE listings SET status='removed', removed_at=NOW() WHERE id=?");
-        }
-
-        if (isset($stmt)) {
-            $stmt->bind_param("i", $listing_id);
-            $stmt->execute();
-            // Audit log
-            $ip = $_SERVER['REMOTE_ADDR'];
-            $ua = $_SERVER['HTTP_USER_AGENT'];
-            $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, ip_address, user_agent, timestamp) VALUES (?, ?, ?, ?, ?, NOW())");
-            $logStmt->bind_param("iisss", $_SESSION['admin_id'], $listing_id, $action, $ip, $ua);
-            $logStmt->execute();
-            $logStmt->close();
-        }
-
-        header("Location: admin_listings.php?success=1");
-        exit;
-    }
 }
 
 // Pagination setup
@@ -98,7 +71,7 @@ $types  = "";
 
 // Apply filters
 if (!empty($_GET['category'])) { $baseQuery .= " AND l.category = ?"; $params[] = $_GET['category']; $types .= "s"; }
-if (!empty($_GET['search'])) { $baseQuery .= " AND (l.title LIKE ? OR l.description LIKE ?)"; $searchTerm = "%" . $_GET['search'] . "%"; $params[] = $searchTerm; $params[] = $searchTerm; $types .= "ss"; }
+if (!empty($_GET['search'])) { $baseQuery .= " AND (l.title LIKE ? OR l.description LIKE ?)"; $searchTerm = "%".$_GET['search']."%"; $params[] = $searchTerm; $params[] = $searchTerm; $types .= "ss"; }
 if (!empty($_GET['status'])) { $baseQuery .= " AND l.status = ?"; $params[] = $_GET['status']; $types .= "s"; }
 if (!empty($_GET['user'])) { $baseQuery .= " AND l.user_id = ?"; $params[] = $_GET['user']; $types .= "i"; }
 if (!empty($_GET['start_date'])) { $baseQuery .= " AND l.created_at >= ?"; $params[] = $_GET['start_date']; $types .= "s"; }
@@ -176,9 +149,8 @@ $result = $stmt->get_result();
         <option value="approve">Approve</option>
         <option value="remove">Remove</option>
       </select>
-            <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+      <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
 
-      <!-- Listings inside the same form -->
       <div class="listings-container">
         <?php while ($row = $result->fetch_assoc()): ?>
           <div class="card">
@@ -197,7 +169,45 @@ $result = $stmt->get_result();
       <button type="submit">Apply to Selected</button>
     </form>
   <?php else: ?>
-    <!-- Listings for moderators (no bulk form) -->
+    <div class="listings-container">
+      <?php while ($row = $result->fetch_assoc()  <!-- Listings with Bulk Actions -->
+  <?php if ($role === 'superadmin'): ?>
+    <!-- Bulk actions form START -->
+    <form method="POST" action="admin_listings.php" class="bulk-actions" 
+          onsubmit="return confirm('Apply bulk action to selected listings?');">
+
+      <select name="bulk_action" required>
+        <option value="">-- Select Action --</option>
+        <option value="approve">Approve</option>
+        <option value="remove">Remove</option>
+      </select>
+      <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+
+      <!-- Listings inside the same form -->
+      <div class="listings-container">
+        <?php while ($row = $result->fetch_assoc()): ?>
+          <div class="card">
+            <input type="checkbox" name="selected_listings[]" value="<?= $row['id']; ?>">
+            <h3><?= htmlspecialchars($row['title']); ?></h3>
+            <p><?= htmlspecialchars($row['description']); ?></p>
+            <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+            <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+            <p class="status">Status: 
+              <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span>
+            </p>
+            <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> 
+              (User ID: <?= $row['user_id']; ?>)</p>
+            <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+          </div>
+        <?php endwhile; ?>
+      </div>
+
+      <!-- Bulk actions form END -->
+      <button type="submit">Apply to Selected</button>
+    </form>
+
+  <?php else: ?>
+    <!-- Listings for moderators (no bulk form, no checkboxes) -->
     <div class="listings-container">
       <?php while ($row = $result->fetch_assoc()): ?>
         <div class="card">
@@ -205,8 +215,11 @@ $result = $stmt->get_result();
           <p><?= htmlspecialchars($row['description']); ?></p>
           <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
           <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
-          <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
-          <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+          <p class="status">Status: 
+            <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span>
+          </p>
+          <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> 
+            (User ID: <?= $row['user_id']; ?>)</p>
           <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
         </div>
       <?php endwhile; ?>
@@ -239,18 +252,51 @@ $result = $stmt->get_result();
     <button id="toggleLogs" aria-expanded="false">Show Audit Logs</button>
     <div id="auditLogs" style="display:none;">
       <h3>Recent Admin Actions</h3>
-      <form method="GET" action="admin_listings.php">
-        <button type="submit" name="export_logs" value="csv">⬇️ Export Logs CSV</button>
-        <button type="submit" name="export_logs" value="json">⬇️ Export Logs JSON</button>
+
+      <!-- Audit Log Filters -->
+      <form method="GET" action="admin_listings.php" class="filter-form">
+        <input type="text" name="log_admin" placeholder="Admin username" value="<?= isset($_GET['log_admin']) ? htmlspecialchars($_GET['log_admin']) : '' ?>">
+        <select name="log_action">
+          <option value="">All Actions</option>
+          <option value="approve">Approve</option>
+          <option value="remove">Remove</option>
+        </select>
+        <input type="date" name="log_start" value="<?= isset($_GET['log_start']) ? htmlspecialchars($_GET['log_start']) : '' ?>">
+        <input type="date" name="log_end" value="<?= isset($_GET['log_end']) ? htmlspecialchars($_GET['log_end']) : '' ?>">
+        <button type="submit">Filter Logs</button>
       </form>
+
       <table>
         <tr><th>Admin</th><th>Listing</th><th>Action</th><th>IP</th><th>User Agent</th><th>Timestamp</th></tr>
         <?php
-        $logResult = $conn->query("SELECT a.username, l.title, log.action, log.ip_address, log.user_agent, log.timestamp 
-                                   FROM admin_logs log 
-                                   JOIN users a ON log.admin_id = a.id 
-                                   JOIN listings l ON log.listing_id = l.id 
-                                   ORDER BY log.timestamp DESC LIMIT 20");
+        $logQuery = "SELECT a.username, l.title, log.action, log.ip_address, log.user_agent, log.timestamp 
+                     FROM admin_logs log 
+                     JOIN users a ON log.admin_id = a.id 
+                     JOIN listings l ON log.listing_id = l.id 
+                     WHERE 1=1";
+
+        $logParams = [];
+        $logTypes  = "";
+
+        if (!empty($_GET['log_admin'])) { $logQuery .= " AND a.username LIKE ?"; $logParams[] = "%".$_GET['log_admin']."%"; $logTypes .= "s"; }
+        if (!empty($_GET['log_action'])) { $logQuery .= " AND log.action = ?"; $logParams[] = $_GET['log_action']; $logTypes .= "s"; }
+        if (!empty($_GET['log_start'])) { $logQuery .= " AND log.timestamp >= ?"; $logParams[] = $_GET['log_start']; $logTypes .= "s"; }
+        if (!empty($_GET['log_end'])) { $logQuery .= " AND log.timestamp <= ?"; $logParams[] = $_GET['log_end']; $logTypes .= "s"; }
+
+        $logPage   = isset($_GET['log_page']) ? max(1, intval($_GET['log_page'])) : 1;
+        $logLimit  = 20;
+        $logOffset = ($logPage - 1) * $logLimit;
+
+        $logQuery .= " ORDER BY log.timestamp DESC LIMIT ? OFFSET ?";
+        $logParams[] = $logLimit;
+        $logParams[] = $logOffset;
+        $logTypes   .= "ii";
+
+        $logStmt = $conn->prepare($logQuery);
+        if (!empty($logParams)) { $logStmt->bind_param($logTypes, ...$logParams); }
+        $logStmt->execute();
+        $logResult = $logStmt->get_result();
+
         while ($log = $logResult->fetch_assoc()) {
             echo "<tr>
                     <td>".htmlspecialchars($log['username'])."</td>
@@ -263,6 +309,15 @@ $result = $stmt->get_result();
         }
         ?>
       </table>
+
+      <!-- Log Pagination -->
+      <div class="pagination">
+        <?php if ($logPage > 1): ?>
+          <a href="admin_listings.php?log_page=<?= $logPage - 1 ?>" class="page-link">‹ Previous</a>
+        <?php endif; ?>
+        <span class="current-page">Page <?= $logPage ?></span>
+        <a href="admin_listings.php?log_page=<?= $logPage + 1 ?>" class="page-link">Next ›</a>
+      </div>
     </div>
   <?php endif; ?>
 </main>
@@ -321,5 +376,6 @@ window.addEventListener('scroll', () => {
 <?php
 if (isset($stmt)) { $stmt->close(); }
 if (isset($exportStmt)) { $exportStmt->close(); }
+if (isset($logStmt)) { $logStmt->close(); }
 $conn->close();
 ?>
