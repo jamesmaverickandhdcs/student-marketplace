@@ -1,14 +1,15 @@
 <?php
-// csrf.php
-session_start();
-
-function generateToken() {
-    if (empty($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-    return $_SESSION['csrf_token'];
+// ✅ Ensure session is started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-function verifyToken($token) {
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+// ✅ Generate CSRF token if not set
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// ✅ Helper function to embed CSRF token in forms
+function csrf_input() {
+    return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($_SESSION['csrf_token']) . '">';
 }

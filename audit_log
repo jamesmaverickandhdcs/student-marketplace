@@ -1,0 +1,85 @@
+<?php
+session_start();
+require_once 'db_connect.php';
+
+if (!isset($_SESSION['admin_logged_in'])) {
+    header("Location: admin_login.php");
+    exit();
+}
+
+$query = "SELECT * FROM audit_logs WHERE 1=1";
+$params = [];
+$types = "";
+
+if (!empty($_GET['start_date'])) {
+    $query .= " AND created_at >= ?";
+    $params[] = $_GET['start_date'];
+    $types .= "s";
+}
+if (!empty($_GET['end_date'])) {
+    $query .= " AND created_at <= ?";
+    $params[] = $_GET['end_date'];
+    $types .= "s";
+}
+if (!empty($_GET['action_type'])) {
+    $query .= " AND action_type = ?";
+    $params[] = $_GET['action_type'];
+    $types .= "s";
+}
+
+$query .= " ORDER BY created_at DESC LIMIT 50";
+$stmt = $conn->prepare($query);
+if ($params) $stmt->bind_param($types, ...$params);
+$stmt->execute();
+$result = $stmt->get_result();
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audit Logs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Audit Logs</h1>
+    <form method="get" class="filter-form">
+        <label>Start Date: <input type="date" name="start_date"></label>
+        <label>End Date: <input type="date" name="end_date"></label>
+        <label>Action Type:
+            <select name="action_type">
+                <option value="">All</option>
+                <option value="create">Create</option>
+                <option value="update">Update</option>
+                <option value="delete">Delete</option>
+                <option value="approve">Approve</option>
+                <option value="reject">Reject</option>
+            </select>
+        </label>
+        <button type="submit">Filter</button>
+    </form>
+
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php while ($row = $result->fetch_assoc()): ?>
+            <tr>
+                <td><?php echo $row['id']; ?></td>
+                <td><?php echo htmlspecialchars($row['user']); ?></td>
+                <td><?php echo htmlspecialchars($row['action_type']); ?></td>
+                <td><?php echo htmlspecialchars($row['details']); ?></td>
+                <td><?php echo $row['created_at']; ?></td>
+            </tr>
+            <?php endwhile; ?>
+        </tbody>
+    </table>
+</body>
+</html>
+<?php $stmt->close(); $conn->close(); ?>

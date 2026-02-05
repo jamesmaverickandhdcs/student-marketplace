@@ -1,61 +1,38 @@
 <?php
 session_start();
 require_once 'db_connect.php';
-require_once 'header.php';
 
-// ✅ Secure session check
+// ✅ Ensure admin is logged in
 if (!isset($_SESSION['admin_logged_in'])) {
     header("Location: admin_login.php");
     exit();
 }
 
-// ✅ CSRF token setup
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+// ✅ Export Listings to CSV
+if (isset($_POST['export_csv'])) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment;filename=listings_export.csv');
+
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['ID', 'Title', 'Seller', 'Status', 'Created At', 'Updated At']);
+
+    $result = $conn->query("SELECT l.id, l.title, u.username, l.status, l.created_at, l.updated_at 
+                            FROM listings l 
+                            JOIN users u ON l.user_id = u.id");
+
+    while ($row = $result->fetch_assoc()) {
+        fputcsv($output, $row);
+    }
+    fclose($output);
+    exit();
 }
 
-// ✅ Pagination setup
-$limit = 20; // listings per page
-$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$offset = ($page - 1) * $limit;
-
-// ✅ Date filter setup
-$start_date = $_GET['start_date'] ?? null;
-$end_date   = $_GET['end_date'] ?? null;
-
-// ✅ Build query with filters
-$query = "SELECT l.id, l.title, l.status, l.created_at, u.username 
-          FROM listings l 
-          JOIN users u ON l.user_id = u.id 
-          WHERE 1=1";
-
-$params = [];
-$types  = "";
-
-if ($start_date && $end_date) {
-    $query .= " AND DATE(l.created_at) BETWEEN ? AND ?";
-    $params[] = $start_date;
-    $params[] = $end_date;
-    $types .= "ss";
-}
-
-$query .= " ORDER BY l.created_at DESC LIMIT ? OFFSET ?";
-$params[] = $limit;
-$params[] = $offset;
-$types .= "ii";
-
-$stmt = $conn->prepare($query);
-$stmt->bind_param($types, ...$params);
-$stmt->execute();
-$result = $stmt->get_result();
-
-// ✅ Count total listings for pagination
-$countQuery = "SELECT COUNT(*) FROM listings";
-$countResult = $conn->query($countQuery);
-$totalListings = $countResult->fetch_row()[0];
-$totalPages = ceil($totalListings / $limit);
+// ✅ Fetch listings
+$result = $conn->query("SELECT l.id, l.title, u.username, l.status, l.created_at 
+                        FROM listings l 
+                        JOIN users u ON l.user_id = u.id 
+                        ORDER BY l.created_at DESC");
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -64,124 +41,63 @@ $totalPages = ceil($totalListings / $limit);
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Manage Listings</h1>
+    <h1>Admin Listings</h1>
 
-    <!-- ✅ Date Filter Form -->
-    <form method="get" class="date-range">
-        <label for="start_date">Start:</label>
-        <input type="date" name="start_date" value="<?php echo htmlspecialchars($start_date); ?>">
-        <label for="end_date">End:</label>
-        <input type="date" name="end_date" value="<?php echo htmlspecialchars($end_date); ?>">
-        <button type="submit">Filter</button>
+    <!-- Export Button -->
+    <form method="post">
+        <button type="submit" name="export_csv" class="btn-export">Export Listings</button>
     </form>
 
-    <!-- ✅ Listings Table -->
-    <?php if ($result && $result->num_rows > 0): ?>
-        <form method="post" class="bulk-form">
-            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+    <!-- Bulk Actions -->
+    <form id="bulkForm" method="post" action="bulk_action.php">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll"></th>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Seller</th>
+                    <th>Status</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while ($row = $result->fetch_assoc()): ?>
+                <tr>
+                    <td><input type="checkbox" name="listing_ids[]" value="<?php echo $row['id']; ?>"></td>
+                    <td><?php echo $row['id']; ?></td>
+                    <td><?php echo htmlspecialchars($row['title']); ?></td>
+                    <td><?php echo htmlspecialchars($row['username']); ?></td>
+                    <td><?php echo htmlspecialchars($row['status']); ?></td>
+                    <td><?php echo $row['created_at']; ?></td>
+                </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
 
-            <table class="admin-table">
-                <thead>
-                    <tr>
-                        <th><input type="checkbox" id="select-all"></th>
-                        <th>ID</th>
-                        <th>Title</th>
-                        <th>User</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php while ($row = $result->fetch_assoc()): ?>
-                        <tr>
-                            <td><input type="checkbox" name="listing_ids[]" value="<?php echo $row['id']; ?>"></td>
-                            <td><?php echo htmlspecialchars($row['id']); ?></td>
-                            <td><?php echo htmlspecialchars($row['title']); ?></td>
-                            <td><?php echo htmlspecialchars($row['username']); ?></td>
-                            <td><span class="badge <?php echo $row['status']; ?>"><?php echo htmlspecialchars($row['status']); ?></span></td>
-                            <td><?php echo $row['created_at']; ?></td>
-                            <td>
-                                <form method="post" class="inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-                                    <input type="hidden" name="listing_id" value="<?php echo $row['id']; ?>">
-                                    <button type="submit" name="action" value="approve">Approve</button>
-                                    <button type="submit" name="action" value="postpone">Postpone</button>
-                                    <button type="submit" name="action" value="traded">Traded</button>
-                                    <button type="submit" name="action" value="delete" onclick="return confirm('Delete this listing?');">Delete</button>
-                                </form>
-                            </td>
-                        </tr>
-                    <?php endwhile; ?>
-                </tbody>
-            </table>
-
-            <!-- ✅ Bulk Actions -->
-            <div class="bulk-actions">
-                <select name="bulk_action" required>
-                    <option value="">-- Select Action --</option>
-                    <option value="approve">Approve</option>
-                    <option value="postpone">Postpone</option>
-                    <option value="traded">Mark as Traded</option>
-                    <option value="delete">Delete</option>
-                </select>
-                <button type="submit">Apply</button>
-            </div>
-        </form>
-
-        <!-- ✅ Pagination -->
-        <div class="pagination">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                <a class="page-link <?php echo $i == $page ? 'active' : ''; ?>" href="?page=<?php echo $i; ?>">
-                    <?php echo $i; ?>
-                </a>
-            <?php endfor; ?>
-        </div>
-    <?php else: ?>
-        <p>No listings found.</p>
-    <?php endif; ?>
-
-    <!-- ✅ Collapsible Audit Logs -->
-    <button id="toggleLogs">Show Audit Logs</button>
-    <div id="auditLogs" style="display:none;">
-        <?php
-        $logs = $conn->query("SELECT a.action, a.listing_id, a.admin_id, a.timestamp 
-                              FROM audit_logs a 
-                              ORDER BY a.timestamp DESC LIMIT 50");
-        if ($logs && $logs->num_rows > 0) {
-            echo "<ul>";
-            while ($log = $logs->fetch_assoc()) {
-                echo "<li>[{$log['timestamp']}] Admin {$log['admin_id']} performed '{$log['action']}' on Listing {$log['listing_id']}</li>";
-            }
-            echo "</ul>";
-        } else {
-            echo "<p>No audit logs available.</p>";
-        }
-        ?>
-    </div>
-
-    <?php $conn->close(); ?>
+        <select name="bulk_action" required>
+            <option value="">Select Action</option>
+            <option value="approve">Approve</option>
+            <option value="reject">Reject</option>
+            <option value="delete">Delete</option>
+        </select>
+        <button type="submit" class="btn-bulk">Apply Bulk Action</button>
+    </form>
 
     <script>
-    // ✅ Select All functionality
-    document.addEventListener("DOMContentLoaded", function() {
-        const selectAll = document.getElementById("select-all");
-        const checkboxes = document.querySelectorAll("input[name='listing_ids[]']");
-        const toggleLogs = document.getElementById("toggleLogs");
-        const auditLogs = document.getElementById("auditLogs");
+    // ✅ Select All toggle
+    document.getElementById("selectAll").addEventListener("change", function() {
+        document.querySelectorAll("input[name='listing_ids[]']").forEach(cb => cb.checked = this.checked);
+    });
 
-        if (selectAll) {
-            selectAll.addEventListener("change", function() {
-                checkboxes.forEach(cb => cb.checked = selectAll.checked);
-            });
-        }
-
-        if (toggleLogs && auditLogs) {
-            toggleLogs.addEventListener("click", function() {
-                auditLogs.style.display = auditLogs.style.display === "none" ? "block" : "none";
-            });
+    // ✅ Confirmation dialog
+    document.getElementById("bulkForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        if (confirm("Are you sure you want to apply this bulk action?")) {
+            this.submit();
         }
     });
     </script>
 </body>
 </html>
+<?php $conn->close(); ?>
