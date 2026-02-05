@@ -1,10 +1,3 @@
-Got it — thanks for catching that. Let’s do a **full clean rewrite of `admin_listings.php`** with Step 27 bulk actions UI fully integrated, making sure the **bulk actions form (1)** and the **checkboxes in each listing card (2)** are correctly aligned and overlap naturally with your existing structure.
-
----
-
-## 🔧 Full Clean Rewrite: `admin_listings.php`
-
-```php
 <?php
 session_start();
 include 'db.php';
@@ -50,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($stmt)) {
                 $stmt->bind_param("i", $listing_id);
                 $stmt->execute();
-                // Enhanced audit log
+                // Audit log
                 $ip = $_SERVER['REMOTE_ADDR'];
                 $ua = $_SERVER['HTTP_USER_AGENT'];
                 $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, ip_address, user_agent, timestamp) VALUES (?, ?, ?, ?, ?, NOW())");
@@ -77,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($stmt)) {
             $stmt->bind_param("i", $listing_id);
             $stmt->execute();
-            // Enhanced audit log
+            // Audit log
             $ip = $_SERVER['REMOTE_ADDR'];
             $ua = $_SERVER['HTTP_USER_AGENT'];
             $logStmt = $conn->prepare("INSERT INTO admin_logs (admin_id, listing_id, action, ip_address, user_agent, timestamp) VALUES (?, ?, ?, ?, ?, NOW())");
@@ -149,12 +142,15 @@ $result = $stmt->get_result();
 
   <!-- Filter Form -->
   <form method="GET" action="admin_listings.php" class="filter-form">
-    <!-- existing filters -->
     <input type="text" name="search" placeholder="Search listings..." value="<?= isset($_GET['search']) ? htmlspecialchars($_GET['search']) : '' ?>">
-    <select name="category"> ... </select>
-    <select name="status"> ... </select>
-    <input type="date" name="start_date" value="<?= isset($_GET['start_date']) ? htmlspecialchars($_GET['start_date']) : '' ?>">
-    <input type="date" name="end_date" value="<?= isset($_GET['end_date']) ? htmlspecialchars($_GET['end_date']) : '' ?>">
+    <select name="category"><option value="">All Categories</option></select>
+    <select name="status"><option value="">All Statuses</option><option value="active">Active</option><option value="removed">Removed</option></select>
+    <div class="date-range">
+      <label for="start_date">From:</label>
+      <input type="date" id="start_date" name="start_date" value="<?= isset($_GET['start_date']) ? htmlspecialchars($_GET['start_date']) : '' ?>">
+      <label for="end_date">To:</label>
+      <input type="date" id="end_date" name="end_date" value="<?= isset($_GET['end_date']) ? htmlspecialchars($_GET['end_date']) : '' ?>">
+    </div>
     <input type="number" name="user" placeholder="User ID" value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : '' ?>">
     <button type="submit">Apply Filters</button>
     <a href="admin_listings.php" class="reset-link">Reset</a>
@@ -172,7 +168,7 @@ $result = $stmt->get_result();
     <div class="notification error" role="alert">❌ <?= htmlspecialchars($_GET['error']); ?></div>
   <?php endif; ?>
 
-  <!-- Bulk Actions Form (superadmin only) -->
+  <!-- Listings with Bulk Actions -->
   <?php if ($role === 'superadmin'): ?>
     <form method="POST" action="admin_listings.php" class="bulk-actions" onsubmit="return confirm('Apply bulk action to selected listings?');">
       <select name="bulk_action" required>
@@ -180,31 +176,44 @@ $result = $stmt->get_result();
         <option value="approve">Approve</option>
         <option value="remove">Remove</option>
       </select>
-      <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+            <input type="hidden" name="csrf_token" value="<?= generateToken(); ?>">
+
+      <!-- Listings inside the same form -->
+      <div class="listings-container">
+        <?php while ($row = $result->fetch_assoc()): ?>
+          <div class="card">
+            <input type="checkbox" name="selected_listings[]" value="<?= $row['id']; ?>">
+            <h3><?= htmlspecialchars($row['title']); ?></h3>
+            <p><?= htmlspecialchars($row['description']); ?></p>
+            <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+            <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+            <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
+            <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+            <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+          </div>
+        <?php endwhile; ?>
+      </div>
+
       <button type="submit">Apply to Selected</button>
     </form>
+  <?php else: ?>
+    <!-- Listings for moderators (no bulk form) -->
+    <div class="listings-container">
+      <?php while ($row = $result->fetch_assoc()): ?>
+        <div class="card">
+          <h3><?= htmlspecialchars($row['title']); ?></h3>
+          <p><?= htmlspecialchars($row['description']); ?></p>
+          <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
+          <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
+          <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
+          <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
+          <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
+        </div>
+      <?php endwhile; ?>
+    </div>
   <?php endif; ?>
 
-  <!-- Listings -->
-  <div class="listings-container">
-    <?php while ($row = $result->fetch_assoc()): ?>
-      <div class="card">
-        <?php if ($role === 'superadmin'): ?>
-          <input type="checkbox" name="selected_listings[]" value="<?= $row['id']; ?>">
-        <?php endif; ?>
-
-        <h3><?= htmlspecialchars($row['title']); ?></h3>
-        <p><?= htmlspecialchars($row['description']); ?></p>
-        <p class="price">Price: $<?= number_format($row['price'], 2); ?></p>
-        <p class="category">Category: <?= htmlspecialchars($row['category']); ?></p>
-        <p class="status">Status: <span class="badge <?= $row['status']; ?>"><?= ucfirst($row['status']); ?></span></p>
-        <p class="user">Posted by: <?= htmlspecialchars($row['username']); ?> (User ID: <?= $row['user_id']; ?>)</p>
-        <p class="posted">Posted on <?= date("F j, Y", strtotime($row['created_at'])); ?></p>
-      </div>
-    <?php endwhile; ?>
-  </div>
-
-    <!-- Pagination -->
+  <!-- Pagination -->
   <div class="pagination">
     <?php if ($page > 1): ?>
       <a href="admin_listings.php?page=1<?= $filterQuery ?>" class="page-link" aria-label="First page">« First</a>
